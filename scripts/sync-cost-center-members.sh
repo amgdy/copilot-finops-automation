@@ -113,8 +113,9 @@ batch_apply() {
       continue
     fi
 
-    local payload
-    payload="$(printf '%s\n' "${slice[@]}" | jq -R . | jq -s --arg action "$action" '{($action): .}')"
+    local users_json payload
+    users_json="$(printf '%s\n' "${slice[@]}" | jq -R . | jq -s '.')"
+    payload="$(jq -n --arg action "$action" --argjson users "$users_json" '{($action): $users}')"
 
     if ! gh api -X PATCH "$endpoint" --input - <<<"$payload" >/dev/null; then
       echo "ERROR: Failed to ${action} users for cost center '$cost_center' via endpoint '$endpoint'" >&2

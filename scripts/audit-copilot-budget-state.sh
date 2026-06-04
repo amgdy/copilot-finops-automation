@@ -56,7 +56,7 @@ report_file="$REPORT_DIR/audit-$(date -u +%Y%m%dT%H%M%SZ).md"
 {
   echo "# Copilot FinOps Audit"
   echo
-  echo "- Enterprise: \\`$ENTERPRISE_SLUG\\`"
+  echo "- Enterprise: \`$ENTERPRISE_SLUG\`"
   echo "- Generated (UTC): $(date -u +'%Y-%m-%d %H:%M:%S')"
   echo
 
@@ -104,8 +104,8 @@ report_file="$REPORT_DIR/audit-$(date -u +%Y%m%dT%H%M%SZ).md"
       target="$(yq eval -o=json ".budget_policies[$i].target" "$BUDGETS_CONFIG_FILE" | jq -c '.')"
       budget="$(yq eval -o=json ".budget_policies[$i].budget" "$BUDGETS_CONFIG_FILE" | jq -c '.')"
       echo "- **$name**"
-      echo "  - Target: \\`$target\\`"
-      echo "  - Budget: \\`$budget\\`"
+      echo "  - Target: \`$target\`"
+      echo "  - Budget: \`$budget\`"
     done
 
     endpoint_template="$(yq eval '.api.apply_budget_endpoint_template // ""' "$BUDGETS_CONFIG_FILE")"
@@ -117,9 +117,9 @@ report_file="$REPORT_DIR/audit-$(date -u +%Y%m%dT%H%M%SZ).md"
         endpoint="${endpoint_template//\{enterprise\}/$ENTERPRISE_SLUG}"
         endpoint="${endpoint//\{policy_name\}/$name}"
         if gh api "$endpoint" >/dev/null 2>&1; then
-          echo "- ✅ Endpoint reachable for policy '$name': \\`$endpoint\\`"
+          echo "- ✅ Endpoint reachable for policy '$name': \`$endpoint\`"
         else
-          echo "- ⚠️ Endpoint not reachable for policy '$name': \\`$endpoint\\`"
+          echo "- ⚠️ Endpoint not reachable for policy '$name': \`$endpoint\`"
         fi
       done
     else
