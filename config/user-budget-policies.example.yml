@@ -1,0 +1,27 @@
+# Enterprise slug can be defined here and/or passed from workflow input.
+enterprise_slug: your-enterprise
+
+# Optional endpoint template if your enterprise has a known budget endpoint shape.
+# api:
+#   apply_budget_endpoint_template: /enterprises/{enterprise}/copilot/budgets/policies/{policy_name}
+
+budget_policies:
+  - name: default-copilot-users
+    description: Default budget posture for standard Copilot users.
+    target:
+      cost_center: cc-standard-copilot-users
+    budget:
+      product: copilot
+      limit_usd: 0
+      period: monthly
+
+  - name: power-users
+    description: Elevated allowance for approved users.
+    target:
+      team:
+        org: your-org
+        slug: copilot-power-users
+    budget:
+      product: copilot
+      limit_usd: 500
+      period: monthly

@@ -1,0 +1,67 @@
+name: Audit Copilot budget state
+
+on:
+  workflow_dispatch:
+    inputs:
+      enterprise_slug:
+        description: GitHub Enterprise slug
+        required: true
+        type: string
+      teams_config_file:
+        description: Team to cost center mapping file
+        required: true
+        default: config/teams-to-cost-centers.example.yml
+        type: string
+      budgets_config_file:
+        description: Budget policy config file
+        required: true
+        default: config/user-budget-policies.example.yml
+        type: string
+  schedule:
+    - cron: '0 12 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.COPILOT_FINOPS_TOKEN != '' && secrets.COPILOT_FINOPS_TOKEN || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure tools
+        run: |
+          set -euo pipefail
+          gh --version
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+          if ! command -v yq >/dev/null 2>&1; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          jq --version
+          yq --version
+
+      - name: Validate configs
+        run: |
+          scripts/validate-config.sh "${{ inputs.teams_config_file }}" teams
+          scripts/validate-config.sh "${{ inputs.budgets_config_file }}" budgets
+
+      - name: Run audit
+        run: |
+          scripts/audit-copilot-budget-state.sh \
+            --enterprise-slug "${{ inputs.enterprise_slug }}" \
+            --teams-config-file "${{ inputs.teams_config_file }}" \
+            --budgets-config-file "${{ inputs.budgets_config_file }}"
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: copilot-finops-audit-reports
+          path: reports/
+          if-no-files-found: warn

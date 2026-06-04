@@ -1,0 +1,27 @@
+# Enterprise slug can be defined here and/or passed from workflow input.
+enterprise_slug: your-enterprise
+
+# Optional API endpoint overrides if GitHub changes endpoint shape.
+# api:
+#   cost_center_members_endpoint_template: /enterprises/{enterprise}/settings/billing/cost-centers/{cost_center}/members
+
+mappings:
+  - name: engineering-platform
+    source:
+      org: your-org
+      team_slug: platform-engineering
+    target:
+      cost_center: cc-platform-engineering
+    sync:
+      remove_extra_members: true
+      batch_size: 50
+
+  - name: ai-enablement
+    source:
+      org: your-org
+      team_slug: ai-enablement
+    target:
+      cost_center: cc-ai-enablement
+    sync:
+      remove_extra_members: false
+      batch_size: 25

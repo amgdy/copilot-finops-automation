@@ -1,0 +1,64 @@
+name: Sync cost center members
+
+on:
+  workflow_dispatch:
+    inputs:
+      enterprise_slug:
+        description: GitHub Enterprise slug
+        required: true
+        type: string
+      config_file:
+        description: Team to cost center mapping file
+        required: true
+        default: config/teams-to-cost-centers.example.yml
+        type: string
+      mapping_name:
+        description: Optional single mapping name to process
+        required: false
+        type: string
+      dry_run:
+        description: Preview only (no changes applied)
+        required: true
+        default: true
+        type: boolean
+  schedule:
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.COPILOT_FINOPS_TOKEN != '' && secrets.COPILOT_FINOPS_TOKEN || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure tools
+        run: |
+          set -euo pipefail
+          gh --version
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+          if ! command -v yq >/dev/null 2>&1; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          jq --version
+          yq --version
+
+      - name: Validate config
+        run: |
+          scripts/validate-config.sh "${{ inputs.config_file }}" teams
+
+      - name: Sync members
+        run: |
+          scripts/sync-cost-center-members.sh \
+            --enterprise-slug "${{ inputs.enterprise_slug }}" \
+            --config-file "${{ inputs.config_file }}" \
+            --mapping-name "${{ inputs.mapping_name }}" \
+            --dry-run "${{ inputs.dry_run }}"
