@@ -1,0 +1,205 @@
+# Example budget policy config.
+#
+# This file intentionally shows every supported policy shape. For a safe no-op
+# config, use:
+#
+#   enterprise_slug: your-enterprise
+#   budget_policies: []
+
+# Enterprise slug can be defined here and/or passed from workflow input.
+enterprise_slug: your-enterprise
+
+# Copilot usage-based billing is metered in AI credits. Each license includes a
+# pooled allotment of AI credits; once the pool is exhausted, additional usage is
+# metered at $0.01 USD per AI credit, subject to the budgets below. The product
+# SKU for Copilot metered usage is `ai_credits`.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Budget policy types  ->  GA budget_scope
+# ─────────────────────────────────────────────────────────────────────────────
+#   enterprise  -> budget_scope: enterprise
+#                  Caps total metered (additional) spend across the whole
+#                  enterprise after the shared pool is exhausted.
+#
+#   universal   -> budget_scope: multi_user_customer
+#                  The default user-level budget applied to every licensed user
+#                  (covers both shared-pool and additional usage). User-scoped
+#                  budgets always hard-stop, so prevent_further_usage must be true.
+#
+#   cost_center -> budget_scope: cost_center
+#                  Caps a single cost center's metered (additional) spend after
+#                  the shared pool. Identify the cost center by name with
+#                  target.cost_center (resolved/sent as budget_entity_name).
+#                  Hard stop is optional (prevent_further_usage default true).
+#
+#   team        -> materialized from a team's membership, in one of two ways
+#                  depending on `coverage` (see below):
+#
+#                    coverage: total_spend  (default) -> budget_scope: user
+#                      The cap covers the shared pool + additional spend. The
+#                      shared-pool allotment is per user with no group-level
+#                      construct, so an individual user-level budget is applied to
+#                      each team member, overriding the universal default. These
+#                      always hard-stop, so prevent_further_usage must be true.
+#
+#                    coverage: additional_spend  -> budget_scope: cost_center
+#                      The cap covers additional (metered) spend only, which is a
+#                      group-level concern, so a single cost center budget is
+#                      applied to the cost center that holds the team's members.
+#                      The apply step also POPULATES that cost center with the
+#                      team's current members (additive), so the budget actually
+#                      caps the people it covers; the sync-cost-center-members
+#                      workflow handles ongoing reconciliation incl. removals.
+#                      target.cost_center is OPTIONAL: when omitted, a name is
+#                      derived from the team source (cc-ent-{enterprise}-{team} or
+#                      cc-org-{org}-{team}) and the cost center is auto-created if
+#                      it does not exist yet. Hard stop is optional (default true).
+#
+# Each budget maps directly onto the GA request body:
+#   budget.amount                -> budget_amount          (whole USD, required)
+#   budget.product_sku           -> budget_product_sku     (optional, default ai_credits)
+#   budget.prevent_further_usage -> prevent_further_usage  (optional, default true; must stay true for universal and team coverage:total_spend)
+#   budget.alerting.will_alert       -> budget_alerting.will_alert       (optional, default false)
+#   budget.alerting.alert_recipients -> budget_alerting.alert_recipients (optional, default [])
+#
+# budget_type is derived from the product SKU, not the scope: the Copilot
+# AI-credit SKU (`ai_credits`) uses BundlePricing; product SKUs use
+# ProductPricing. It is set automatically and does not need to be specified.
+# Only budget.amount is required; omit any field above to use its default.
+#
+# Naming convention:
+#   enterprise budget:  budget-ent-{enterprise}-total
+#   universal budget:   budget-universal-default
+#   cost center budget: budget-cc-{cost-center}
+#   team budget:        budget-team-org-{team-slug}   or   budget-team-ent-{team-slug}
+
+budget_policies:
+
+  # ── 1. Enterprise-level cap (metered spend after the shared pool) ────────────
+  - name: budget-ent-your-enterprise-total
+    type: enterprise
+    description: Enterprise-wide cap on total Copilot metered (additional) AI-credit spend.
+    budget:
+      amount: 5000
+      # For enterprise/cost_center scopes this is optional; enable it to block
+      # usage when the cap is reached ("Stop usage when budget limit is reached").
+      prevent_further_usage: true
+      alerting:
+        will_alert: true
+        alert_recipients:
+          - your-billing-admin
+
+  # ── 2. Universal user-level budget, hard-stop default for everyone ──────────
+  - name: budget-universal-default
+    type: universal
+    description: Default per-user AI-credit budget for all users (shared pool + additional). Overridden per-user by team policies below.
+    budget:
+      amount: 0
+      # Required true for user / multi_user_customer scopes (always a hard stop).
+      prevent_further_usage: true
+
+  # ── 3a. Cost center budget — alert-only metered spend cap ───────────────────
+  - name: budget-cc-platform-engineering
+    type: cost_center
+    description: Metered (additional) spend cap for the platform engineering cost center.
+    target:
+      # Cost center name (resolved to its ID / sent as budget_entity_name).
+      cost_center: cc-org-your-org-platform-engineering
+    budget:
+      amount: 200
+      # Optional for cost_center scope; enable to block usage at the cap.
+      prevent_further_usage: false
+      alerting:
+        will_alert: true
+        alert_recipients:
+          - your-copilot-admin
+
+  # ── 3b. Cost center budget — hard-stop metered spend cap ────────────────────
+  - name: budget-cc-ai-leads
+    type: cost_center
+    description: Metered (additional) spend hard-stop cap for the ai-leads cost center.
+    target:
+      cost_center: cc-ent-your-enterprise-ai-leads
+    budget:
+      amount: 500
+      prevent_further_usage: true
+
+  # ── 4a. Org team budget, coverage: total_spend — one user budget per member ─
+  # Caps each member's shared pool + additional spend by giving every member an
+  # individual user-level budget that overrides the universal default. This is
+  # the default coverage, so the `coverage:` line below is optional.
+  - name: budget-team-org-platform-engineering
+    type: team
+    coverage: total_spend
+    description: Per-member pool + additional cap for org team platform-engineering (one user budget each).
+    source:
+      org: your-org
+      team_slug: platform-engineering
+    budget:
+      amount: 100
+      # Per-member user budgets always hard-stop.
+      prevent_further_usage: true
+
+  # ── 4b. Enterprise team budget, coverage: total_spend ───────────────────────
+  # Same per-member behavior as 4a, but the source is an enterprise team.
+  - name: budget-team-ent-copilot-champions
+    type: team
+    coverage: total_spend
+    description: Per-member pool + additional cap for enterprise team copilot-champions.
+    source:
+      enterprise: your-enterprise
+      team_slug: copilot-champions
+    budget:
+      amount: 150
+      prevent_further_usage: true
+
+  # ── 4c. Team budget, coverage: additional_spend — named cost center budget ───
+  # Caps the team's collective additional (metered) spend with a single cost
+  # center budget on the cost center that holds the team's members. Use this when
+  # you only want to control overspend after the shared pool, not the pool itself.
+  # target.cost_center is optional — omit it to have the system derive the name
+  # and auto-create the cost center (see 4c).
+  - name: budget-team-ent-ai-leads
+    type: team
+    coverage: additional_spend
+    description: Collective metered-spend cap for enterprise team ai-leads (single cost center budget).
+    source:
+      enterprise: your-enterprise
+      # Use the bare team slug.
+      team_slug: ai-leads
+    target:
+      # Cost center holding this team's members (resolved to its ID at apply time).
+      cost_center: cc-ent-your-enterprise-ai-leads
+    budget:
+      amount: 500
+      # Optional for cost center budgets; enable to block usage at the cap.
+      prevent_further_usage: false
+
+  # ── 4d. Team budget, coverage: additional_spend — auto-created cost center ───
+  # Same as 4c but with no target.cost_center: the system derives the name
+  # cc-ent-your-enterprise-data-science and auto-creates that cost center if it
+  # does not exist, then adds the current team members and applies the budget.
+  # Use sync-cost-center-members for ongoing reconciliation, including removals.
+  - name: budget-team-ent-data-science
+    type: team
+    coverage: additional_spend
+    description: Collective metered-spend cap for enterprise team data-science (auto-created cost center).
+    source:
+      enterprise: your-enterprise
+      team_slug: data-science
+    budget:
+      amount: 300
+
+  # ── 4e. Org team budget, coverage: additional_spend — auto-created cost center
+  # Same as 4d, but the derived cost center name uses the org convention:
+  # cc-org-your-org-ml-platform.
+  - name: budget-team-org-ml-platform-additional
+    type: team
+    coverage: additional_spend
+    description: Collective metered-spend cap for org team ml-platform with an auto-created cost center.
+    source:
+      org: your-org
+      team_slug: ml-platform
+    budget:
+      amount: 250
+      prevent_further_usage: false

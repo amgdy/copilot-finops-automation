@@ -1,0 +1,137 @@
+name: 💰 Apply user budgets
+
+on:
+  workflow_dispatch:
+    inputs:
+      enterprise_slug:
+        description: GitHub Enterprise slug (optional; defaults to enterprise_slug in the config file)
+        required: false
+        type: string
+      budget_policies_config_file:
+        description: Budget policies config file path
+        required: true
+        default: config/budget-policies.yml
+        type: string
+      budget_policies_issue_number:
+        description: Optional issue number created with the Budget policy config request template
+        required: false
+        type: string
+      policy_name:
+        description: Optional single policy name to process
+        required: false
+        type: string
+      dry_run:
+        description: Preview only (no changes applied)
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  apply:
+    name: 💰 Apply budget policies
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.COPILOT_FINOPS_TOKEN || github.token }}
+      BUDGET_SUMMARY_FILE: budget-summary.jsonl
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
+
+      - name: 🔍 Resolve config
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/resolve-budget-policies-config.sh \
+            --config-file "${{ inputs.budget_policies_config_file }}" \
+            --issue-number "${{ inputs.budget_policies_issue_number || '' }}" \
+            --dry-run "${{ inputs.dry_run }}"
+
+      - name: ✅ Validate config
+        run: |
+          scripts/validate-config.sh "$BUDGET_POLICIES_CONFIG_FILE" budgets
+
+      - name: 🚀 Apply budget policies
+        id: apply
+        env:
+          ENTERPRISE_SLUG_INPUT: ${{ inputs.enterprise_slug || '' }}
+          POLICY_NAME: ${{ inputs.policy_name || '' }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ENTERPRISE_ARGS=()
+          if [[ -n "$ENTERPRISE_SLUG_INPUT" ]]; then
+            ENTERPRISE_ARGS+=(--enterprise-slug "$ENTERPRISE_SLUG_INPUT")
+          fi
+
+          scripts/apply-user-budgets.sh \
+            "${ENTERPRISE_ARGS[@]}" \
+            --config-file "$BUDGET_POLICIES_CONFIG_FILE" \
+            --policy-name "$POLICY_NAME" \
+            --dry-run "$DRY_RUN" | tee apply.log
+
+      - name: 📝 Write job summary
+        if: always()
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          jsonl="${BUDGET_SUMMARY_FILE:-budget-summary.jsonl}"
+          log=apply.log
+
+          {
+            echo "## Apply user budgets"
+            echo
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "**Mode:** dry-run (preview only — no changes applied)"
+            else
+              echo "**Mode:** live (changes applied)"
+            fi
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ -s "$jsonl" ]]; then
+            jq -rs -f .github/summary/apply-summary.jq "$jsonl" | tee rendered-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_No policy results were captured — the apply step may have failed before reconciling. See the log below._" | tee rendered-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          {
+            echo
+            echo "<details><summary>Full run log</summary>"
+            echo
+            echo '```'
+            if [[ -f "$log" ]]; then cat "$log"; else echo "(no log captured)"; fi
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 💬 Comment on issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+        run: |
+          if [[ "${BUDGET_POLICIES_CONFIG_FROM_ISSUE:-false}" != "true" ]]; then
+            exit 0
+          fi
+
+          comment_file="$RUNNER_TEMP/budget-policy-dry-run-comment.md"
+          {
+            echo "## Budget policy dry-run result"
+            echo
+            echo "- **Outcome:** $APPLY_OUTCOME"
+            echo "- **Config SHA-256:** \`$BUDGET_POLICIES_CONFIG_SHA256\`"
+            echo "- **Issue updated at:** $BUDGET_POLICIES_ISSUE_UPDATED_AT"
+            echo "- **Workflow run:** $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            if [[ -f rendered-summary.md ]]; then
+              cat rendered-summary.md
+            else
+              echo "No rendered summary was produced. Check the workflow run logs."
+            fi
+          } > "$comment_file"
+
+          gh issue comment "$BUDGET_POLICIES_ISSUE_NUMBER" --body-file "$comment_file"

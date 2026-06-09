@@ -1,0 +1,6 @@
+# Public-safe starter config.
+# Replace your-enterprise and add policies in your private fork before applying.
+enterprise_slug: your-enterprise
+
+# Keep this list empty until you are ready to create or update budgets.
+budget_policies: []

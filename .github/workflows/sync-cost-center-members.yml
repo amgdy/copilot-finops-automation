@@ -1,0 +1,153 @@
+name: 👥 Sync cost center members
+
+on:
+  workflow_dispatch:
+    inputs:
+      enterprise_slug:
+        description: GitHub Enterprise slug (optional; defaults to enterprise_slug in the config file)
+        required: false
+        type: string
+      cost_center_members_config_file:
+        description: Cost center member sync config file path
+        required: true
+        default: config/cost-center-members.yml
+        type: string
+      cost_center_members_issue_number:
+        description: Optional issue number created with the Cost center members config request template
+        required: false
+        type: string
+      mapping_name:
+        description: Optional single mapping name to process
+        required: false
+        type: string
+      dry_run:
+        description: Preview only (no changes applied)
+        required: true
+        default: true
+        type: boolean
+  schedule:
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    name: 👥 Sync members
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.COPILOT_FINOPS_TOKEN || github.token }}
+      SYNC_SUMMARY_FILE: sync-summary.jsonl
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
+
+      - name: 🔍 Resolve config
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/resolve-cost-center-members-config.sh \
+            --config-file "${{ inputs.cost_center_members_config_file || 'config/cost-center-members.yml' }}" \
+            --issue-number "${{ inputs.cost_center_members_issue_number || '' }}" \
+            --dry-run "${{ inputs.dry_run }}"
+
+      - name: ✅ Validate config
+        run: |
+          scripts/validate-config.sh "$COST_CENTER_MEMBERS_CONFIG_FILE" teams
+
+      - name: 🔄 Sync members
+        id: sync
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          ENTERPRISE_SLUG_INPUT: ${{ inputs.enterprise_slug || '' }}
+          MAPPING_NAME: ${{ inputs.mapping_name || '' }}
+        run: |
+          DRY_RUN="true"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
+            DRY_RUN="$INPUT_DRY_RUN"
+          fi
+
+          ENTERPRISE_ARGS=()
+          if [[ -n "$ENTERPRISE_SLUG_INPUT" ]]; then
+            ENTERPRISE_ARGS+=(--enterprise-slug "$ENTERPRISE_SLUG_INPUT")
+          fi
+
+          scripts/sync-cost-center-members.sh \
+            "${ENTERPRISE_ARGS[@]}" \
+            --config-file "$COST_CENTER_MEMBERS_CONFIG_FILE" \
+            --mapping-name "$MAPPING_NAME" \
+            --dry-run "$DRY_RUN" | tee sync.log
+
+      - name: 📝 Write job summary
+        if: always()
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          DRY_RUN="true"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
+            DRY_RUN="$INPUT_DRY_RUN"
+          fi
+
+          jsonl="${SYNC_SUMMARY_FILE:-sync-summary.jsonl}"
+          log=sync.log
+
+          {
+            echo "## Sync cost center members"
+            echo
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "**Mode:** dry-run (preview only — no changes applied)"
+            else
+              echo "**Mode:** live (changes applied)"
+            fi
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ -s "$jsonl" ]]; then
+            jq -rs -f .github/summary/sync-summary.jq "$jsonl" | tee rendered-summary.md >> "$GITHUB_STEP_SUMMARY"
+          elif [[ -f "$log" ]] && grep -q 'Sync completed' "$log"; then
+            echo "All mappings are already in sync — no membership changes." | tee rendered-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_No membership results were captured — the sync step may have failed before running. See the log below._" | tee rendered-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          {
+            echo
+            echo "<details><summary>Full run log</summary>"
+            echo
+            echo '```'
+            if [[ -f "$log" ]]; then cat "$log"; else echo "(no log captured)"; fi
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 💬 Comment on issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_OUTCOME: ${{ steps.sync.outcome }}
+        run: |
+          if [[ "${COST_CENTER_MEMBERS_CONFIG_FROM_ISSUE:-false}" != "true" ]]; then
+            exit 0
+          fi
+
+          comment_file="$RUNNER_TEMP/cost-center-members-dry-run-comment.md"
+          {
+            echo "## Cost center members dry-run result"
+            echo
+            echo "- **Outcome:** $SYNC_OUTCOME"
+            echo "- **Config SHA-256:** \`$COST_CENTER_MEMBERS_CONFIG_SHA256\`"
+            echo "- **Issue updated at:** $COST_CENTER_MEMBERS_ISSUE_UPDATED_AT"
+            echo "- **Workflow run:** $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            if [[ -f rendered-summary.md ]]; then
+              cat rendered-summary.md
+            else
+              echo "No rendered summary was produced. Check the workflow run logs."
+            fi
+          } > "$comment_file"
+
+          gh issue comment "$COST_CENTER_MEMBERS_ISSUE_NUMBER" --body-file "$comment_file"

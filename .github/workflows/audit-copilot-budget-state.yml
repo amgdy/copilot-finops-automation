@@ -1,0 +1,88 @@
+name: 🔎 Audit Copilot budget state
+
+on:
+  workflow_dispatch:
+    inputs:
+      enterprise_slug:
+        description: GitHub Enterprise slug (optional; defaults to enterprise_slug in the config file)
+        required: false
+        type: string
+      cost_center_members_config_file:
+        description: Cost center member sync config file path
+        required: true
+        default: config/cost-center-members.yml
+        type: string
+      budget_policies_config_file:
+        description: Budget policies config file path
+        required: true
+        default: config/budget-policies.yml
+        type: string
+  schedule:
+    - cron: '0 12 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: 🔎 Audit budget state
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.COPILOT_FINOPS_TOKEN || github.token }}
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
+
+      - name: 🔍 Resolve configs
+        run: |
+          scripts/resolve-cost-center-members-config.sh \
+            --config-file "${{ inputs.cost_center_members_config_file || 'config/cost-center-members.yml' }}"
+          scripts/resolve-budget-policies-config.sh \
+            --config-file "${{ inputs.budget_policies_config_file || 'config/budget-policies.yml' }}"
+
+      - name: ✅ Validate configs
+        run: |
+          scripts/validate-config.sh "$COST_CENTER_MEMBERS_CONFIG_FILE" teams
+          scripts/validate-config.sh "$BUDGET_POLICIES_CONFIG_FILE" budgets
+
+      - name: 🔎 Run audit
+        env:
+          ENTERPRISE_SLUG_INPUT: ${{ inputs.enterprise_slug || '' }}
+        run: |
+          ENTERPRISE_ARGS=()
+          if [[ -n "$ENTERPRISE_SLUG_INPUT" ]]; then
+            ENTERPRISE_ARGS+=(--enterprise-slug "$ENTERPRISE_SLUG_INPUT")
+          fi
+
+          scripts/audit-copilot-budget-state.sh \
+            "${ENTERPRISE_ARGS[@]}" \
+            --teams-config-file "$COST_CENTER_MEMBERS_CONFIG_FILE" \
+            --budgets-config-file "$BUDGET_POLICIES_CONFIG_FILE"
+
+      - name: 📤 Upload reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: copilot-finops-audit-reports
+          path: reports/
+          if-no-files-found: warn
+
+      - name: 📝 Write job summary
+        if: always()
+        run: |
+          shopt -s nullglob
+          report_files=(reports/*.md)
+          report_file=""
+          if ((${#report_files[@]})); then
+            mapfile -t sorted_reports < <(printf '%s\n' "${report_files[@]}" | sort)
+            report_file="${sorted_reports[$((${#sorted_reports[@]} - 1))]}"
+          fi
+
+          if [[ -n "$report_file" && -f "$report_file" ]]; then
+            cat "$report_file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Copilot FinOps Audit"
+              echo
+              echo "⚠️ No audit report was generated — the audit step may have failed. Check the logs above."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

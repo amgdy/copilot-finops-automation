@@ -1,0 +1,38 @@
+name: Budget policy config request
+description: Request a workflow run using budget policies from issue content.
+title: "[Budget policy config]: "
+labels:
+  - budget-policy-config
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to test budget policy config through the workflow. Config files reviewed through pull requests remain the recommended production path.
+
+  - type: textarea
+    id: budget_policies_yaml
+    attributes:
+      label: Budget policies YAML
+      description: Paste a complete budget policy config. The workflow validates this YAML and uses it as the apply config source.
+      render: yaml
+      placeholder: |
+        enterprise_slug: your-enterprise
+
+        budget_policies:
+          - name: budget-universal-default
+            type: universal
+            budget:
+              amount: 50
+              prevent_further_usage: true
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I understand file-based config reviewed through pull requests (config as code) is recommended over issue-based config, which is for requests and testing.
+          required: true
+        - label: I understand issue-based config and config files are both visible to anyone with read access to this repository, so the enterprise, team, cost center, user, and budget details in this issue are not private.
+          required: true

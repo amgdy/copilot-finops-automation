@@ -1,0 +1,50 @@
+# Example cost center membership sync config.
+#
+# This file intentionally shows every supported source/sync shape. For a safe
+# no-op config, use:
+#
+#   enterprise_slug: your-enterprise
+#   mappings: []
+
+# Enterprise slug can be defined here and/or passed from workflow input.
+enterprise_slug: your-enterprise
+
+mappings:
+  # CASE 1: Org team source, strict reconciliation.
+  # Adds missing team members to the cost center and removes users who are no
+  # longer in the team. batch_size is optional; max is 50.
+  - name: cc-org-your-org-platform-engineering
+    description: Keep org team platform-engineering exactly in sync with its cost center.
+    source:
+      org: your-org
+      team_slug: platform-engineering
+    target:
+      # Cost center name (resolved to its ID at sync time).
+      cost_center: cc-org-your-org-platform-engineering
+    sync:
+      remove_extra_members: true
+      batch_size: 50
+
+  # CASE 2: Enterprise team source, additive sync only.
+  # Omitting sync.remove_extra_members keeps any extra/manual cost center users.
+  - name: cc-ent-your-enterprise-ai-leads
+    description: Add enterprise team ai-leads members to its cost center without removing extras.
+    source:
+      enterprise: your-enterprise
+      # Use the bare team slug.
+      team_slug: ai-leads
+    target:
+      cost_center: cc-ent-your-enterprise-ai-leads
+
+  # CASE 3: Org team source, explicit additive sync.
+  # This is equivalent to omitting remove_extra_members, but useful when you want
+  # the intent to be obvious in a reviewed config.
+  - name: cc-org-your-org-data-science
+    description: Add org team data-science members to its cost center and keep manual members.
+    source:
+      org: your-org
+      team_slug: data-science
+    target:
+      cost_center: cc-org-your-org-data-science
+    sync:
+      remove_extra_members: false

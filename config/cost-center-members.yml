@@ -1,0 +1,6 @@
+# Public-safe starter config.
+# Replace your-enterprise in your private fork or pass --enterprise-slug / workflow input.
+enterprise_slug: your-enterprise
+
+# Keep this list empty if you do not want to run cost-center membership sync.
+mappings: []

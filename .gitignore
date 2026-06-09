@@ -1,0 +1,6 @@
+reports/
+*.log
+*.jsonl
+.env
+config/*.local.yml
+config/*.private.yml

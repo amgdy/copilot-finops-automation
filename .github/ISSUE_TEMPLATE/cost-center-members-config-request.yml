@@ -1,0 +1,41 @@
+name: Cost center members config request
+description: Request a workflow run using cost center member sync config from issue content.
+title: "[Cost center members config]: "
+labels:
+  - cost-center-members-config
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to test cost center member sync config through the workflow. Config files reviewed through pull requests remain the recommended production path.
+
+  - type: textarea
+    id: cost_center_members_yaml
+    attributes:
+      label: Cost center members YAML
+      description: Paste a complete cost center member sync config. The workflow validates this YAML and uses it as the sync config source.
+      render: yaml
+      placeholder: |
+        enterprise_slug: your-enterprise
+
+        mappings:
+          - name: cc-org-your-org-platform-engineering
+            source:
+              org: your-org
+              team_slug: platform-engineering
+            target:
+              cost_center: cc-org-your-org-platform-engineering
+            sync:
+              remove_extra_members: true
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I understand file-based config reviewed through pull requests (config as code) is recommended over issue-based config, which is for requests and testing.
+          required: true
+        - label: I understand issue-based config and config files are both visible to anyone with read access to this repository, so the enterprise, team, cost center, and user details in this issue are not private.
+          required: true
