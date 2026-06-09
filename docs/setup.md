@@ -33,7 +33,9 @@ On macOS, the system `/bin/bash` is usually too old for scripts that use arrays 
 4. For budget policies, set `budget.amount` (whole USD, required). `budget.prevent_further_usage` defaults to `true`; keep it `true` for `universal` and `team` with `coverage: total_spend`. `budget.product_sku` defaults to `ai_credits`, and `budget_type` is derived from the SKU, so neither normally needs to be set.
 5. The GA enhanced-billing endpoints are built in; you do not need to configure API endpoint templates.
 6. Commit config changes through pull requests.
-7. Run the audit workflow first, then run mutating workflows with `dry_run=true` before switching to `dry_run=false`.
+7. Run the audit workflow first, then run mutating workflows manually with `dry_run=true` before switching manual runs to `dry_run=false` or enabling schedules.
+
+Scheduled sync/apply workflows run live from reviewed file-based config. Keep schedules disabled until the repository has safe config and the right secret configured.
 
 For `team` policies with `coverage: additional_spend`, `target.cost_center` is optional. When omitted, the apply script derives the conventional cost center name, creates it if missing, and adds the team's current members.
 

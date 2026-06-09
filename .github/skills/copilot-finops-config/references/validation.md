@@ -74,6 +74,12 @@ budget_policies_config_file: config/budget-policies.yml
 enterprise_slug: optional override
 ```
 
+## Scheduled Workflows
+
+- `sync-cost-center-members.yml` runs daily at 03:17 UTC, uses file-based config, and forces `dry_run=false`.
+- `apply-user-budgets.yml` runs daily at 04:47 UTC after member sync, uses file-based config, and forces `dry_run=false`.
+- `audit-copilot-budget-state.yml` runs weekly on Monday at 12:23 UTC.
+
 ## Local Config Safety
 
 Files matching `config/*.local.yml` are ignored by git. Use them when values are private, experimental, or specific to a local operator.

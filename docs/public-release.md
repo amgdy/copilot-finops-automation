@@ -30,7 +30,7 @@ This lets scheduled workflows and validation steps fail less noisily while adopt
 - Use a private repository for live enterprise configuration whenever possible.
 - Store `COPILOT_FINOPS_TOKEN` as a repository or organization secret, never in a file.
 - Require reviews for `.github/workflows/**`, `config/**`, and scripts.
-- Keep mutating workflows in `dry_run=true` until the audit and preview summaries are reviewed.
+- Keep manual mutating workflows in `dry_run=true` until the audit and preview summaries are reviewed.
 - Disable scheduled workflows in public demo repositories that are not connected to a real enterprise.
 
 ## Final checks

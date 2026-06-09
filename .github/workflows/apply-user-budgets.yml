@@ -25,6 +25,9 @@ on:
         required: true
         default: true
         type: boolean
+  schedule:
+    # Daily after the cost center member sync schedule, so team-based budgets use fresh membership.
+    - cron: '47 4 * * *'
 
 permissions:
   contents: read
@@ -46,7 +49,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           scripts/resolve-budget-policies-config.sh \
-            --config-file "${{ inputs.budget_policies_config_file }}" \
+            --config-file "${{ inputs.budget_policies_config_file || 'config/budget-policies.yml' }}" \
             --issue-number "${{ inputs.budget_policies_issue_number || '' }}" \
             --dry-run "${{ inputs.dry_run }}"
 
@@ -57,10 +60,18 @@ jobs:
       - name: 🚀 Apply budget policies
         id: apply
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
           ENTERPRISE_SLUG_INPUT: ${{ inputs.enterprise_slug || '' }}
           POLICY_NAME: ${{ inputs.policy_name || '' }}
-          DRY_RUN: ${{ inputs.dry_run }}
         run: |
+          DRY_RUN="true"
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            DRY_RUN="false"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
+            DRY_RUN="$INPUT_DRY_RUN"
+          fi
+
           ENTERPRISE_ARGS=()
           if [[ -n "$ENTERPRISE_SLUG_INPUT" ]]; then
             ENTERPRISE_ARGS+=(--enterprise-slug "$ENTERPRISE_SLUG_INPUT")
@@ -75,8 +86,16 @@ jobs:
       - name: 📝 Write job summary
         if: always()
         env:
-          DRY_RUN: ${{ inputs.dry_run }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
+          DRY_RUN="true"
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            DRY_RUN="false"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
+            DRY_RUN="$INPUT_DRY_RUN"
+          fi
+
           jsonl="${BUDGET_SUMMARY_FILE:-budget-summary.jsonl}"
           log=apply.log
 

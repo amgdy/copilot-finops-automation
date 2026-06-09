@@ -26,7 +26,7 @@ on:
         default: true
         type: boolean
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '17 3 * * *'
 
 permissions:
   contents: read
@@ -65,7 +65,9 @@ jobs:
           MAPPING_NAME: ${{ inputs.mapping_name || '' }}
         run: |
           DRY_RUN="true"
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            DRY_RUN="false"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
             DRY_RUN="$INPUT_DRY_RUN"
           fi
 
@@ -87,7 +89,9 @@ jobs:
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
           DRY_RUN="true"
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            DRY_RUN="false"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_DRY_RUN" ]]; then
             DRY_RUN="$INPUT_DRY_RUN"
           fi
 
