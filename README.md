@@ -10,7 +10,7 @@ Simple GitHub Actions + GitHub CLI automation for GitHub Enterprise Copilot FinO
 - Apply Copilot budget policies for enterprise, universal user default, cost center, and team-based budgets.
 - Audit desired config versus current GitHub state and produce markdown reports.
 - Support manual and scheduled workflows.
-- Keep mutating flows in `dry_run=true` mode by default.
+- Keep manual mutating runs in `dry_run=true` mode by default; scheduled runs reconcile reviewed file-based config.
 
 All billing operations use GitHub's GA **Budget and usage management APIs** (enhanced billing). See [API reference](#api-reference-ga-enhanced-billing) below.
 
@@ -55,7 +55,7 @@ See `docs/workflows.md` for the full level tree and billing-flow diagrams.
    scripts/validate-config.sh config/budget-policies.yml budgets
    ```
 
-6. Run the audit workflow first, then run sync/apply with `dry_run=true`. Switch to `dry_run=false` only after the job summary looks right.
+6. Run the audit workflow first, then run sync/apply manually with `dry_run=true`. Switch manual runs to `dry_run=false`, or enable schedules, only after the job summary looks right.
 
 If you do not want to sync cost center members, keep `config/cost-center-members.yml` present with `mappings: []`. If you are not ready to apply budgets, keep `config/budget-policies.yml` present with `budget_policies: []`.
 
@@ -206,6 +206,8 @@ budget_policies:
 
 Workflow: `.github/workflows/sync-cost-center-members.yml`
 
+Triggers: manual + daily schedule at 03:17 UTC. Manual runs start in dry-run; scheduled runs use file-based config and run live.
+
 Inputs:
 
 - `enterprise_slug` (optional — overrides `enterprise_slug` in the config file)
@@ -217,6 +219,8 @@ Inputs:
 ### Apply user budgets
 
 Workflow: `.github/workflows/apply-user-budgets.yml`
+
+Triggers: manual + daily schedule at 04:47 UTC. Manual runs start in dry-run; scheduled runs use file-based config and run live after the member sync schedule.
 
 Inputs:
 
@@ -233,6 +237,8 @@ See [docs/workflows.md](docs/workflows.md) for the full issue-based config scena
 ### Audit Copilot budget state
 
 Workflow: `.github/workflows/audit-copilot-budget-state.yml`
+
+Triggers: manual + weekly schedule on Monday at 12:23 UTC.
 
 Inputs:
 
@@ -343,7 +349,9 @@ The apply flow never deletes budgets. Removing a budget is manual (`DELETE .../b
 
 ## Dry-run behavior
 
-Mutating workflows default to `dry_run=true`. Logs show what would change — `Would CREATE`, `Would UPDATE (id=…)`, or `No change` — and no writes happen until `dry_run=false`.
+Manual mutating workflow runs default to `dry_run=true`. Logs show what would change — `Would CREATE`, `Would UPDATE (id=…)`, or `No change` — and no writes happen until `dry_run=false`.
+
+Scheduled sync/apply runs use reviewed file-based config and force `dry_run=false`, so they reconcile live state once schedules are enabled. Keep schedules disabled until config and token setup are ready.
 
 ## Safety recommendations
 

@@ -6,7 +6,7 @@ This repository automates GitHub Enterprise Copilot FinOps workflows. Treat chan
 
 - Keep config-as-code as the primary production path.
 - Keep issue-based config as an optional workflow input path for request/test scenarios or explicitly approved live runs.
-- Keep mutating workflows safe by default and easy to review.
+- Keep manual mutating workflow runs dry-run by default; scheduled sync/apply runs live only from reviewed file-based config.
 - Preserve local/private config safety: files matching `config/*.local.yml` must remain ignored.
 - Do not commit tokens, generated reports, logs, JSONL summaries, private enterprise names, user logins, or private cost center data unless the user explicitly asks and confirms they are safe to publish.
 - Do not use deprecated request-based Copilot billing terminology. Use AI-credit terminology.

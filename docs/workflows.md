@@ -4,12 +4,12 @@
 
 1. Edit the config file and open a pull request.
 2. Run the audit workflow to confirm the config points at the expected teams, cost centers, and budget scopes.
-3. Run sync/apply with `dry_run=true` and review the job summary.
-4. Run the same workflow with `dry_run=false` only after the preview looks right.
+3. Run sync/apply manually with `dry_run=true` and review the job summary.
+4. Run the same workflow manually with `dry_run=false`, or enable schedules, only after the preview looks right.
 
 For a new public fork, keep the default starter configs empty until you are ready to connect the repository to a real enterprise. Empty `mappings: []` and `budget_policies: []` files are valid and safe.
 
-Disable scheduled runs in public demo repositories that are not connected to a real enterprise. Job summaries and audit artifacts can expose operational details once real config is added.
+Disable scheduled runs in public demo repositories that are not connected to a real enterprise. Scheduled sync/apply runs are live once enabled, and job summaries and audit artifacts can expose operational details once real config is added.
 
 All workflows run on `ubuntu-24.04`. The GitHub-hosted Ubuntu 24.04 runner image already includes Bash 5.2, GitHub CLI, `jq`, and `yq`, which are the tools these scripts need.
 
@@ -42,18 +42,20 @@ For the exact API sequence and request bodies used by these scripts, see [API re
 
 ## `sync-cost-center-members.yml`
 
-- Triggers: manual + daily schedule.
+- Triggers: manual + daily schedule at 03:17 UTC.
+- Scheduled runs use file-based config and force `dry_run=false` to reconcile live cost center membership.
 - If you do not use cost center member sync, keep the config file present with `mappings: []`.
 - Reads team membership from either an org team (`source.org`) or enterprise team (`source.enterprise`).
 - Resolves the target cost center name to its GA cost center **ID**, then reconciles members:
   - Reads current members from the cost center's `resources[]` array.
   - Adds members via `POST .../cost-centers/{cost_center_id}/resource` (body `{"users":[...]}`).
   - Removes extra members (when `remove_extra_members: true`) via `DELETE .../resource`.
-- Shows the add/remove diff in dry-run mode (default); applies changes only when `dry_run=false`.
+- Manual dry-runs show the add/remove diff; live runs apply changes when `dry_run=false`.
 
 ## `apply-user-budgets.yml`
 
-- Trigger: manual.
+- Triggers: manual + daily schedule at 04:47 UTC, after the cost center member sync schedule.
+- Scheduled runs use file-based config and force `dry_run=false` to reconcile live budget policy state after member sync.
 - Creates budgets with the GA endpoint `POST /enterprises/{enterprise}/settings/billing/budgets`.
 - Processes budget policy types from config, each mapping to a GA `budget_scope`:
   - `enterprise` → `budget_scope: enterprise` — caps total enterprise metered spend after the shared pool.
@@ -73,7 +75,7 @@ Use issue-based config for test/request scenarios when you want the workflow to 
 - `sync-cost-center-members.yml` accepts `cost_center_members_issue_number` from the `Cost center members config request` issue form.
 - The issue must be open and have the expected label (`budget-policy-config` or `cost-center-members-config`).
 - The workflow extracts the fenced YAML from the issue form field and writes it to `$RUNNER_TEMP`.
-- The workflow comments the dry-run result back to the issue.
+- The workflow comments the run result back to the issue.
 
 Issue content can be edited after creation. For this reason, issue-based runs record the issue `updatedAt` timestamp and SHA-256 hash of the extracted YAML in the summary and issue comment.
 
@@ -166,7 +168,7 @@ flowchart TD
 
 ## `audit-copilot-budget-state.yml`
 
-- Triggers: manual + weekly schedule.
+- Triggers: manual + weekly schedule on Monday at 12:23 UTC.
 - Reads both config files and reports on team member counts, cost center member counts (resolved by cost center ID), and budget policy definitions (scope, SKU, amount, hard-stop).
 - Generates markdown audit reports under `reports/`.
 - Uploads reports as workflow artifacts.

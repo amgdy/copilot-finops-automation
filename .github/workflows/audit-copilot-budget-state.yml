@@ -18,7 +18,7 @@ on:
         default: config/budget-policies.yml
         type: string
   schedule:
-    - cron: '0 12 * * 1'
+    - cron: '23 12 * * 1'
 
 permissions:
   contents: read

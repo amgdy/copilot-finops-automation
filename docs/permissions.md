@@ -49,7 +49,7 @@ the "Enterprise teams" read permission.
 ## Safety recommendations
 
 - Protect `config/**` and `.github/workflows/**` with required reviews and CODEOWNERS.
-- Keep mutating workflows defaulted to `dry_run=true`.
+- Keep manual mutating workflows defaulted to `dry_run=true`, and keep schedules disabled until reviewed file-based config is ready.
 - Use branch protection on `main`.
 - Prefer a dedicated automation token that can be rotated without affecting a human's everyday account.
 - Rotate the token immediately if it ever appears in logs, reports, issues, commits, or screenshots.
