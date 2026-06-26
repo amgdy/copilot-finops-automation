@@ -5,6 +5,7 @@ ENTERPRISE_SLUG=""
 TEAMS_CONFIG_FILE="config/copilot-finops.example.yml"
 BUDGETS_CONFIG_FILE="config/copilot-finops.example.yml"
 REPORT_DIR="reports"
+FORCE_USER_SYNC="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,6 +23,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --report-dir)
       REPORT_DIR="$2"
+      shift 2
+      ;;
+    --force-user-sync)
+      FORCE_USER_SYNC="$2"
       shift 2
       ;;
     *)
@@ -88,6 +93,12 @@ report_file="$REPORT_DIR/audit-$(date -u +%Y%m%dT%H%M%SZ).md"
 
 has_value() {
   [[ -n "$1" && "$1" != "null" ]]
+}
+
+# Lowercase + slugify a string for matching a native team resource name against a
+# configured team slug (see the team-resource note in sync-cost-center-members.sh).
+slugify() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
 }
 
 team_members_endpoint() {
@@ -170,6 +181,7 @@ count_org_members() {
         m_ent="$(yq eval ".team_cost_center_mappings[$i].enterprise // \"\"" "$TEAMS_CONFIG_FILE")"
         team_slug="$(yq eval ".team_cost_center_mappings[$i].team // \"\"" "$TEAMS_CONFIG_FILE")"
         cost_center="$(yq eval ".team_cost_center_mappings[$i].cost_center // \"\"" "$TEAMS_CONFIG_FILE")"
+        m_force="$(yq eval ".team_cost_center_mappings[$i].force_user_sync // false" "$TEAMS_CONFIG_FILE")"
         if has_value "$m_org"; then
           source_org="$m_org"
           source_enterprise=""
@@ -183,6 +195,15 @@ count_org_members() {
         source_enterprise="$(yq eval ".mappings[$i].source.enterprise // \"\"" "$TEAMS_CONFIG_FILE")"
         team_slug="$(yq eval ".mappings[$i].source.team_slug" "$TEAMS_CONFIG_FILE")"
         cost_center="$(yq eval ".mappings[$i].target.cost_center" "$TEAMS_CONFIG_FILE")"
+        # v1 is frozen (no force_user_sync field); only the global
+        # --force-user-sync flag can opt it back into user-level sync.
+        m_force="false"
+      fi
+
+      if [[ "$FORCE_USER_SYNC" == "true" || "$m_force" == "true" ]]; then
+        force_user_sync="true"
+      else
+        force_user_sync="false"
       fi
 
       source_label="$(team_source_label "$source_org" "$source_enterprise" "$team_slug")"
@@ -191,22 +212,58 @@ count_org_members() {
 
       team_count="$(count_team_members "$source_org" "$source_enterprise" "$team_slug")"
       cc_count="unknown"
+      cc_teams=()
 
-      # GA cost center API: resolve name -> id, then count user resources.
+      # GA cost center API: resolve name -> id, then count user resources and detect
+      # any natively-assigned enterprise team resources (GA 2026-06-25). Native team
+      # members are attributed dynamically and are not listed as user resources, so
+      # they are intentionally excluded from the user count below.
       cc_id="$(gh api --paginate "$cc_list_endpoint" 2>/dev/null | jq -r --arg n "$cost_center" '(.costCenters // []) | .[] | select((.state // "active") != "deleted") | select(.name == $n) | .id' | head -n1 || true)"
       if [[ -z "$cc_id" ]]; then
         echo "  - ⚠️ Cost center '$cost_center' not found (create it or check the name)."
       else
         cc_endpoint="/enterprises/$ENTERPRISE_SLUG/settings/billing/cost-centers/$cc_id"
-        if cc_count="$(gh api --paginate "$cc_endpoint?per_page=100" 2>/dev/null | jq -sc 'map(.resources // []) | add | map(select((.type // "" | ascii_downcase) == "user")) | length')"; then
-          :
+        cc_resources_file="$(mktemp)"
+        if gh api --paginate "$cc_endpoint?per_page=100" 2>/dev/null | jq -sc 'map(.resources // []) | add' >"$cc_resources_file"; then
+          cc_count="$(jq -r 'map(select((.type // "" | ascii_downcase) == "user")) | length' "$cc_resources_file")"
+          mapfile -t cc_teams < <(jq -r 'map(select((.type // "" | ascii_downcase) | test("team"))) | .[].name' "$cc_resources_file")
         else
           echo "  - ⚠️ Could not read members of cost center '$cost_center' ($cc_id)."
         fi
+        rm -f "$cc_resources_file"
       fi
 
       echo "  - Team member count: $team_count"
       echo "  - Cost center member count: $cc_count"
+
+      # Is THIS mapping's team assigned to the cost center natively (GA 2026-06-25)?
+      team_natively_assigned=false
+      if ((${#cc_teams[@]})); then
+        echo "  - Natively-assigned team resource(s): ${cc_teams[*]} (members attributed dynamically; not in the count above)"
+        team_slug_lc="$(printf '%s' "$team_slug" | tr '[:upper:]' '[:lower:]')"
+        team_slug_norm="$(slugify "$team_slug")"
+        for cc_team in "${cc_teams[@]}"; do
+          cc_team_lc="$(printf '%s' "$cc_team" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$cc_team_lc" == "$team_slug_lc" || "$(slugify "$cc_team")" == "$team_slug_norm" ]]; then
+            team_natively_assigned=true
+            break
+          fi
+        done
+      fi
+
+      # Report the membership-management state. The sync skips this mapping by
+      # default (force_user_sync=false) and defers to native assignment; flag the
+      # gap when neither native assignment nor effective force_user_sync is in place.
+      if [[ "$team_natively_assigned" == "true" ]]; then
+        echo "  - ✅ Team '$team_slug' is assigned to this cost center natively; user-level sync is skipped and native attribution is active."
+        if [[ "$force_user_sync" == "true" ]]; then
+          echo "  - ⚠️ force_user_sync is active while the team is also assigned natively — forced sync still skips this mapping to avoid redundant user resources. Remove the native assignment or set force_user_sync: false."
+        fi
+      elif [[ "$force_user_sync" == "true" ]]; then
+        echo "  - ↪️ force_user_sync is active; the legacy user-level membership sync is active for this mapping (no native team assignment detected)."
+      else
+        echo "  - ⚠️ Team '$team_slug' is NOT assigned to this cost center natively and force_user_sync is false, so the sync skips this mapping and its membership is unmanaged. Assign the team natively (recommended) or set force_user_sync: true."
+      fi
     done
   fi
 

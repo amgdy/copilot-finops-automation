@@ -42,6 +42,10 @@ scripts/apply-user-budgets.sh --config-file config/copilot-finops.yml --dry-run 
 scripts/sync-cost-center-members.sh --config-file config/copilot-finops.yml --dry-run true
 ```
 
+The sync command above skips `team_cost_center_mappings` by default in favor of native enterprise-team
+assignment. Add `--force-user-sync true` only when intentionally dry-running the deprecated user-level
+bridge.
+
 v1 split files:
 
 ```bash
@@ -58,6 +62,7 @@ config once, then applies budgets and syncs members in parallel (each with its o
 config_file: merged v2 config (default config/copilot-finops.yml)
 issue_number: testing only — resolve config from a Copilot FinOps config-request issue (label copilot-finops-config); do not use for production
 dry_run: true before live apply/sync
+force_user_sync: false by default; true runs the deprecated user-level member sync instead of default-skip
 ```
 
 The unified workflow is file-based: the enterprise slug comes from the config, not an input. The
@@ -83,6 +88,7 @@ cost_center_members_config_file: config/cost-center-members.yml (legacy v1 defau
 mapping_name: optional single mapping
 enterprise_slug: optional override
 dry_run: true before live sync
+force_user_sync: false by default; true runs the deprecated user-level member sync instead of default-skip
 ```
 
 Audit workflow:
@@ -92,6 +98,7 @@ config_file: optional unified config (e.g. config/copilot-finops.yml); overrides
 cost_center_members_config_file: config/cost-center-members.yml (legacy v1 default)
 budget_policies_config_file: config/budget-policies.yml (legacy v1 default)
 enterprise_slug: optional override
+force_user_sync: false by default; true reports the deprecated user-level member sync as globally forced
 ```
 
 ## Scheduled Workflows

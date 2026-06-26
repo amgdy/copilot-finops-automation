@@ -45,7 +45,7 @@ Three operations, each a GitHub Actions workflow you can run manually or on a sc
 | --- | --- | --- |
 | 🔍 **Audit** | `audit-copilot-budget-state.yml` | Compares your config to live GitHub state and writes a markdown report. |
 | 💵 **Apply budgets** | `apply-user-budgets.yml` | Creates or updates AI-credit budgets to match your config (idempotent; never deletes). |
-| 👥 **Sync members** | `sync-cost-center-members.yml` | Keeps cost centers populated from current team membership. |
+| 👥 **Sync members** | `sync-cost-center-members.yml` | Bridges cost center membership from current team membership. Skips every mapping by default in favor of [native enterprise-team assignment](https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/); set `force_user_sync` to run the legacy user-level sync. |
 | 🚀 **Apply both (v2)** | `apply-copilot-finops.yml` | Validates the merged config once, then applies budgets and syncs members in parallel. |
 
 Manual runs start in `dry_run=true` and print exactly what would change. Scheduled runs reconcile reviewed file-based config live. See [docs/workflows.md](docs/workflows.md) for triggers, inputs, and diagrams.

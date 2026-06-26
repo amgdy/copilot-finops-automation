@@ -79,6 +79,11 @@ Organization budget:
 
 Ask when generating `team_cost_center_mappings`.
 
+First confirm the approach, because user-level sync is now opt-in:
+
+- Can the enterprise team be assigned to the cost center **natively** ([changelog](https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/), [docs](https://docs.github.com/en/enterprise-cloud@latest/billing/tutorials/control-costs-at-scale))? Recommend that — the sync skips every mapping by default and defers to native assignment.
+- If native assignment is not usable, set `force_user_sync: true` on the mapping (or run the workflow with the `force_user_sync` input) to run the legacy user-level sync as a bridge.
+
 For each mapping:
 
 - Source type: org team (set `organization:`) or enterprise team (omit it).
@@ -86,7 +91,8 @@ For each mapping:
 - Enterprise slug, if enterprise team and different from top-level.
 - Bare team slug.
 - Destination cost center name (`cost_center:`).
-- Should sync remove extra users not in the team (`remove_extra_members`)?
+- Run the legacy user-level sync for this mapping (`force_user_sync: true`)? Default is to skip and defer to native assignment.
+- Should sync remove extra users not in the team (`remove_extra_members`)? Only applies when `force_user_sync` is true.
   - `true`: strict reconciliation.
   - `false` or omitted: additive only, preserves manual members.
 

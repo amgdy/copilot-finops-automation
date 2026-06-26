@@ -25,6 +25,11 @@ on:
         required: true
         default: true
         type: boolean
+      force_user_sync:
+        description: Run the deprecated user-level member sync instead of deferring to native enterprise-team assignment
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '17 3 * * *'
 
@@ -62,6 +67,7 @@ jobs:
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           ENTERPRISE_SLUG_INPUT: ${{ inputs.enterprise_slug || '' }}
           MAPPING_NAME: ${{ inputs.mapping_name || '' }}
+          FORCE_USER_SYNC: ${{ inputs.force_user_sync || 'false' }}
         run: |
           DRY_RUN="true"
           if [[ "$EVENT_NAME" == "schedule" ]]; then
@@ -79,6 +85,7 @@ jobs:
             "${ENTERPRISE_ARGS[@]}" \
             --config-file "$COST_CENTER_MEMBERS_CONFIG_FILE" \
             --mapping-name "$MAPPING_NAME" \
+            --force-user-sync "$FORCE_USER_SYNC" \
             --dry-run "$DRY_RUN" | tee sync.log
 
       - name: 📝 Write job summary
