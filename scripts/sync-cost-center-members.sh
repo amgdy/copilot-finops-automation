@@ -8,6 +8,21 @@ MAPPING_NAME=""
 DRY_RUN="true"
 FORCE_USER_SYNC="false"
 
+normalize_bool_flag() {
+  local value="$1"
+  local flag_name="$2"
+  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    true|false)
+      printf '%s' "$value"
+      ;;
+    *)
+      echo "ERROR: $flag_name must be true or false, got '$value'" >&2
+      exit 1
+      ;;
+  esac
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --enterprise-slug)
@@ -37,6 +52,8 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+FORCE_USER_SYNC="$(normalize_bool_flag "$FORCE_USER_SYNC" "--force-user-sync")"
 
 if ! command -v gh >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1 || ! command -v yq >/dev/null 2>&1; then
   echo "ERROR: gh, jq, and yq are required." >&2
