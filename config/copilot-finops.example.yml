@@ -179,22 +179,33 @@ ai_credit_spend_policies:
 # ─────────────────────────────────────────────────────────────────────────────
 # team_cost_center_mappings[]  ->  ongoing team -> cost center membership sync
 # ─────────────────────────────────────────────────────────────────────────────
-# Each mapping keeps a cost center populated from a team's current membership.
+# DEPRECATED — prefer native assignment. GitHub now supports assigning an
+# enterprise team directly to a cost center, which keeps membership current
+# automatically (incl. SCIM/IdP) — see
+#   https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/
+#   https://docs.github.com/en/enterprise-cloud@latest/billing/tutorials/control-costs-at-scale
+# Because of that, the sync SKIPS every mapping by default. Set
+# force_user_sync: true on a mapping (or pass --force-user-sync) to run the
+# legacy user-level sync as a bridge where native assignment is not usable.
 #   remove_extra_members: true            -> strict reconcile (also removes leavers)
 #   remove_extra_members: false (default) -> additive (keeps manual/extra members)
 # As with budgets, `organization:` selects an org team source; omit it for an enterprise team.
 
 team_cost_center_mappings:
-  # Org team source, strict reconciliation.
+  # Org team source, strict reconciliation. force_user_sync opts into the legacy
+  # user-level sync; without it this mapping is skipped (native assignment preferred).
   - name: cc-org-your-org-platform-engineering
     description: Keep org team platform-engineering exactly in sync with its cost center.
     organization: your-org
     team: platform-engineering
     cost_center: cc-org-your-org-platform-engineering
+    force_user_sync: true
     remove_extra_members: true
 
-  # Enterprise team source, additive sync (omit remove_extra_members to keep extras).
+  # Enterprise team source, native-first/default-skip. Assign this team to the
+  # cost center natively in GitHub. If you must use the legacy user-level bridge,
+  # add force_user_sync: true; omitting remove_extra_members keeps it additive.
   - name: cc-ent-your-enterprise-ai-leads
-    description: Add enterprise team ai-leads members to its cost center without removing extras.
+    description: Prefer native enterprise-team assignment for ai-leads.
     team: ai-leads
     cost_center: cc-ent-your-enterprise-ai-leads

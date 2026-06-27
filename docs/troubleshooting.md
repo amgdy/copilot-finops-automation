@@ -57,6 +57,24 @@ For these scripts, a 404 usually means one of these things:
 
 Check `docs/permissions.md`, then rerun in `dry_run=true` where possible.
 
+## Sync skipped: every mapping is skipped by default
+
+If a sync run logs `NOTE: Skipping user-level membership sync for mapping '...'` for each mapping and makes no changes, this is the **new default**. Enterprise teams can now be assigned to cost centers natively ([changelog](https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/), [docs](https://docs.github.com/en/enterprise-cloud@latest/billing/tutorials/control-costs-at-scale)), so the sync defers to native assignment instead of writing individual user resources. Either:
+
+- Assign the team to the cost center natively in **Enterprise → Settings → Billing → Cost centers** (recommended), or
+- Set `force_user_sync: true` on the mapping (or run the workflow with the `force_user_sync` input / pass `--force-user-sync true`) to run the legacy user-level sync as a bridge.
+
+The audit workflow flags a mapping that is neither assigned natively nor forced as **membership unmanaged**, so check the audit summary if you expected member changes. If your live sync uses the global `force_user_sync` workflow input (for example with frozen v1 config), run audit with `force_user_sync` too so the report reflects that global opt-in.
+
+## Sync skipped: team is assigned natively
+
+If a forced sync run logs `NOTE: Cost center '...' already has enterprise team '...' assigned natively` and skips a mapping, this is expected. The cost center already has that enterprise team assigned as a native resource ([changelog](https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/)), so GitHub keeps its membership current automatically and the user-level sync would only re-add the same members as redundant direct resources. Either:
+
+- Remove the `team_cost_center_mappings` entry (or set `force_user_sync: false`) and rely on the native assignment (recommended), or
+- Remove the native team assignment from the cost center if you specifically want script-managed user resources.
+
+A `WARN` about a *different* natively-assigned team means the cost center mixes native team assignment with user-level sync; pick one approach per cost center.
+
 ## Team member counts are zero
 
 - Use bare team slugs, for example `teams: [ai-leads]` (budgets) or `team: ai-leads` (mappings).

@@ -154,6 +154,11 @@ Rules:
   are listed) the script derives and creates one cost center per team.
 - `remove_extra_members: true` also prunes cost-center members who left the team (default additive).
 - `stop_at_limit` is optional here.
+- Membership note: the apply step populates each cost center with the team's current members at apply
+  time. For ongoing membership you can instead assign the enterprise team to the cost center natively
+  ([changelog](https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/)) so
+  membership stays current automatically; if you do, skip the matching `team_cost_center_mappings`
+  entry (the sync defers to a native assignment) and let this budget keep capping that cost center.
 
 Explicit cost center (single team only):
 

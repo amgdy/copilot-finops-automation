@@ -21,6 +21,11 @@ on:
         required: true
         default: config/copilot-finops.yml
         type: string
+      force_user_sync:
+        description: Report deprecated user-level member sync as globally forced instead of skipped
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '23 12 * * 1'
 
@@ -55,6 +60,7 @@ jobs:
       - name: 🔎 Run audit
         env:
           ENTERPRISE_SLUG_INPUT: ${{ inputs.enterprise_slug || '' }}
+          FORCE_USER_SYNC: ${{ inputs.force_user_sync || 'false' }}
         run: |
           ENTERPRISE_ARGS=()
           if [[ -n "$ENTERPRISE_SLUG_INPUT" ]]; then
@@ -64,7 +70,8 @@ jobs:
           scripts/audit-copilot-budget-state.sh \
             "${ENTERPRISE_ARGS[@]}" \
             --teams-config-file "$COST_CENTER_MEMBERS_CONFIG_FILE" \
-            --budgets-config-file "$BUDGET_POLICIES_CONFIG_FILE"
+            --budgets-config-file "$BUDGET_POLICIES_CONFIG_FILE" \
+            --force-user-sync "$FORCE_USER_SYNC"
 
       - name: 📤 Upload reports
         uses: actions/upload-artifact@v7

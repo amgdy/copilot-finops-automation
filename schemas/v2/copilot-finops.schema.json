@@ -142,7 +142,8 @@
         },
         "team_cost_center_mappings": {
             "title": "Team cost center mappings",
-            "description": "List of team -> cost center membership mappings. Optional — omit it (or use []) to skip member sync entirely.",
+            "description": "DEPRECATED: List of team -> cost center membership mappings (user-level sync). Assigning an enterprise team directly to a cost center is now natively supported and is the recommended approach — it keeps membership current automatically (including IdP/SCIM changes) without expanding members into direct user resources. See https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/ and https://docs.github.com/en/enterprise-cloud@latest/billing/tutorials/control-costs-at-scale. By default the sync now SKIPS every mapping and defers to native assignment; set force_user_sync: true on a mapping (or pass --force-user-sync) to run the legacy user-level sync as a bridge while the REST 'Add resources to a cost center' endpoint has no team write field. Optional — omit it (or use []) to skip member sync entirely.",
+            "deprecated": true,
             "type": "array",
             "default": [],
             "items": {
@@ -580,7 +581,8 @@
         },
         "mapping": {
             "title": "Team cost center mapping",
-            "description": "One ongoing team -> cost center membership sync mapping.",
+            "description": "DEPRECATED: One ongoing team -> cost center membership sync mapping. Prefer assigning the enterprise team to the cost center natively (https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/); this user-level mapping is a bridge retained until the cost-center resource REST API exposes a team write field.",
+            "deprecated": true,
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -652,7 +654,13 @@
                 },
                 "remove_extra_members": {
                     "title": "Remove extra members",
-                    "description": "true = strict reconcile (remove cost-center members no longer in the team); false (default) = additive.",
+                    "description": "true = strict reconcile (remove cost-center members no longer in the team); false (default) = additive. Only applies when force_user_sync is true.",
+                    "type": "boolean",
+                    "default": false
+                },
+                "force_user_sync": {
+                    "title": "Force legacy user-level member sync",
+                    "description": "Opt back into the deprecated user-level membership sync for this mapping. Default false: the sync SKIPS this mapping and defers to native enterprise-team -> cost center assignment (https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/), which keeps membership current automatically (incl. SCIM/IdP). Set true (or pass --force-user-sync) to expand the team into individual user resources on the cost center as a bridge where native assignment is not usable.",
                     "type": "boolean",
                     "default": false
                 }

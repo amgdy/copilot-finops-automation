@@ -54,8 +54,12 @@ team_cost_center_mappings:
     organization: your-org
     team: platform-engineering
     cost_center: cc-org-your-org-platform-engineering
+    force_user_sync: true
     remove_extra_members: true
 ```
+
+The sync skips every mapping by default and defers to native enterprise-team assignment; `force_user_sync: true`
+opts a mapping into the legacy user-level sync (omit it to rely on native assignment).
 
 ## Agent Safety
 

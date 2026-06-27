@@ -71,13 +71,16 @@ For the exact API sequence and request bodies used by these scripts, see [API re
 
 - Triggers: manual + daily schedule at 03:17 UTC.
 - Scheduled runs use file-based config and force `dry_run=false` to reconcile live cost center membership.
+- **Skips every mapping by default.** Native enterprise-team → cost center assignment is now the supported path, so the script defers to it and performs no user-level membership writes unless you opt in. Opt in per mapping with `force_user_sync: true`, or for the whole run with the `force_user_sync` workflow input (`--force-user-sync`). Scheduled runs leave it `false`.
 - If you do not use cost center member sync, keep the config present with `team_cost_center_mappings: []` (v2) or `mappings: []` (v1).
 - Reads team membership from either an org team (`organization:` set) or an enterprise team (no `organization:`; the enterprise is inferred).
-- Resolves the target cost center name to its GA cost center **ID**, then reconciles members:
+- Resolves the target cost center name to its GA cost center **ID**, then reconciles members (only when the mapping is forced):
   - Reads current members from the cost center's `resources[]` array.
   - Adds members via `POST .../cost-centers/{cost_center_id}/resource` (body `{"users":[...]}`).
   - Removes extra members (when `remove_extra_members: true`) via `DELETE .../resource`.
 - Manual dry-runs show the add/remove diff; live runs apply changes when `dry_run=false`.
+- **Prefer native enterprise-team assignment.** GitHub now supports adding an enterprise team directly as a cost center resource ([changelog](https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/), [docs](https://docs.github.com/en/enterprise-cloud@latest/billing/tutorials/control-costs-at-scale)); membership then stays current automatically, including via SCIM/IdP sync, with no reassignment. That is the recommended way to keep a cost center aligned to a team. The user-level sync is a bridge (enabled with `force_user_sync`) for cases where you cannot use native assignment, because the REST resource API does not yet expose a team write field (it still only accepts `users`/`organizations`/`repositories`).
+- **Native-assignment awareness (forced runs):** when a forced mapping's team is already assigned to the cost center as a native team resource, the script still **skips that mapping** (logging a `NOTE`) rather than re-adding the same members as redundant direct user resources. If a different team resource is present, it logs a `WARN` so you do not unknowingly double-manage one cost center. Do not run user-level sync and native team assignment against the same cost center.
 
 ## `apply-user-budgets.yml`
 
@@ -270,6 +273,7 @@ flowchart TD
 
 - Triggers: manual + weekly schedule on Monday at 12:23 UTC.
 - Reads both config files and reports on team member counts, cost center member counts (resolved by cost center ID), and budget policy definitions (scope, SKU, amount, hard-stop).
+- The `force_user_sync` input only affects reporting: set it when your sync/apply runs use the global force input (especially for frozen v1 configs) so mappings are reported as legacy user-level sync active instead of membership unmanaged.
 - Generates markdown audit reports under `reports/`.
 - Uploads reports as workflow artifacts.
 - Treat audit reports as operational data. They can contain team names, cost center names, budget amounts, and user counts.

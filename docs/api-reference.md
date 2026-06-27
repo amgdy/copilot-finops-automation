@@ -25,12 +25,14 @@ Process:
 
 1. Validate the config file.
 2. Resolve `enterprise_slug` from workflow input or config.
-3. Fetch source team members.
-4. Resolve the `cost_center` name to its active cost center ID.
-5. Read current cost center user resources.
-6. Compare source team users with current cost center users.
-7. Add missing users.
-8. Remove extra users only when `remove_extra_members: true`.
+3. For each mapping, decide whether to sync: by default the mapping is **skipped** (a `NOTE` is logged) and the script defers to native enterprise-team assignment. It proceeds only when `force_user_sync: true` on the mapping or `--force-user-sync true` is passed. The remaining steps run only for forced mappings.
+4. Fetch source team members.
+5. Resolve the `cost_center` name to its active cost center ID.
+6. Read current cost center user resources.
+7. Detect natively-assigned enterprise team resources on the cost center. If the mapping's own team is already assigned natively, skip the mapping (the native assignment keeps membership current); if a different team resource is present, warn.
+8. Compare source team users with current cost center users.
+9. Add missing users.
+10. Remove extra users only when `remove_extra_members: true`.
 
 Team member endpoints:
 
@@ -62,6 +64,7 @@ Notes:
 - The API mutates cost centers by cost center ID, so scripts resolve name to ID first.
 - Archived/deleted cost centers are ignored during name resolution.
 - `remove_extra_members: false` or omitted means additive sync only.
+- **Native enterprise team assignment is preferred and is the default.** GitHub supports adding an enterprise team directly as a cost center resource ([changelog](https://github.blog/changelog/2026-06-25-assign-enterprise-teams-to-cost-centers/), [docs](https://docs.github.com/en/enterprise-cloud@latest/billing/tutorials/control-costs-at-scale)), which keeps membership current automatically (including via SCIM/IdP sync). Because of this, the sync **skips every mapping by default**; opt into the legacy user-level sync per mapping with `force_user_sync: true` (or globally with `--force-user-sync true`). The REST resource endpoint does **not** yet expose a team write field — its body parameters are still `users`/`organizations`/`repositories` — so this user-level sync remains the automatable bridge. The scripts read team resources via `GET .../cost-centers/{cost_center_id}` (matching any `resources[].type` containing `team`, e.g. `Team`/`EnterpriseTeam`) and defer to a native assignment when present.
 
 ## Apply Budget Policies
 

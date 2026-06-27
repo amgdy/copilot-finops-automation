@@ -6,6 +6,22 @@ ENTERPRISE_SLUG_CLI=""
 CONFIG_FILE="config/copilot-finops.example.yml"
 MAPPING_NAME=""
 DRY_RUN="true"
+FORCE_USER_SYNC="false"
+
+normalize_bool_flag() {
+  local value="$1"
+  local flag_name="$2"
+  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    true|false)
+      printf '%s' "$value"
+      ;;
+    *)
+      echo "ERROR: $flag_name must be true or false, got '$value'" >&2
+      exit 1
+      ;;
+  esac
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -26,12 +42,18 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN="$2"
       shift 2
       ;;
+    --force-user-sync)
+      FORCE_USER_SYNC="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 1
       ;;
   esac
 done
+
+FORCE_USER_SYNC="$(normalize_bool_flag "$FORCE_USER_SYNC" "--force-user-sync")"
 
 if ! command -v gh >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1 || ! command -v yq >/dev/null 2>&1; then
   echo "ERROR: gh, jq, and yq are required." >&2
@@ -158,6 +180,32 @@ fetch_cost_center_users() {
     | sort -u
 }
 
+# Lowercase + slugify a string (spaces/punctuation -> single hyphens) for matching
+# a native team resource name against a configured team slug.
+slugify() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+# List natively-assigned team resources of a cost center by ID (sorted names).
+#
+# The "assign enterprise teams to cost centers" feature (GA 2026-06-25) stores an
+# enterprise team as a single Team resource and attributes its members dynamically
+# (kept current automatically, including via SCIM/IdP sync) instead of expanding
+# them into individual user resources. We match any resource whose type contains
+# "team" (e.g. "Team", "EnterpriseTeam") to stay robust to the exact label.
+fetch_cost_center_teams() {
+  local cc_id="$1"
+  local endpoint="${cc_get_tpl//\{enterprise\}/$ENTERPRISE_SLUG}"
+  endpoint="${endpoint//\{cost_center_id\}/$cc_id}"
+  gh api --paginate "$endpoint?per_page=100" \
+    | jq -r '
+        (.resources // []) | .[]
+        | select((.type // "" | ascii_downcase) | test("team"))
+        | .name
+      ' \
+    | sort -u
+}
+
 # Add or remove user members of a cost center using the GA resource endpoint.
 # add  -> POST   .../resource  {"users":[...]}
 # remove -> DELETE .../resource {"users":[...]}
@@ -229,6 +277,7 @@ for ((i = 0; i < mapping_count; i++)); do
     team_slug="$(yq eval ".team_cost_center_mappings[$i].team // \"\"" "$CONFIG_FILE")"
     cost_center="$(yq eval ".team_cost_center_mappings[$i].cost_center // \"\"" "$CONFIG_FILE")"
     remove_extra="$(yq eval ".team_cost_center_mappings[$i].remove_extra_members // false" "$CONFIG_FILE")"
+    m_force="$(yq eval ".team_cost_center_mappings[$i].force_user_sync // false" "$CONFIG_FILE")"
     batch_size=50
     if has_value "$m_org"; then
       source_org="$m_org"
@@ -247,6 +296,18 @@ for ((i = 0; i < mapping_count; i++)); do
     cost_center="$(yq eval ".mappings[$i].target.cost_center" "$CONFIG_FILE")"
     remove_extra="$(yq eval ".mappings[$i].sync.remove_extra_members // false" "$CONFIG_FILE")"
     batch_size="$(yq eval ".mappings[$i].sync.batch_size // 50" "$CONFIG_FILE")"
+    # v1 is frozen and has no force_user_sync field; only the global
+    # --force-user-sync flag can opt a v1 config back into user-level sync.
+    m_force="false"
+  fi
+
+  # Effective opt-in: the global --force-user-sync flag OR a per-mapping
+  # force_user_sync: true. When neither is set, the mapping is skipped (below) in
+  # favor of native enterprise-team -> cost center assignment (GA 2026-06-25).
+  if [[ "$FORCE_USER_SYNC" == "true" || "$m_force" == "true" ]]; then
+    force_user_sync="true"
+  else
+    force_user_sync="false"
   fi
 
   # Validate required fields
@@ -273,6 +334,21 @@ for ((i = 0; i < mapping_count; i++)); do
   echo "Source: $(team_source_label "$source_org" "$source_enterprise" "$team_slug")"
   echo "Target cost center: $cost_center"
 
+  # Default: defer to native enterprise-team -> cost center assignment (GA
+  # 2026-06-25) and SKIP user-level sync. GitHub keeps a natively-assigned team's
+  # membership current automatically (incl. SCIM/IdP), so the legacy user-level
+  # sync is only needed where native assignment is not usable. Opt in per mapping
+  # with force_user_sync: true, or globally with --force-user-sync.
+  if [[ "$force_user_sync" != "true" ]]; then
+    echo "NOTE: Skipping user-level membership sync for mapping '$name'."
+    echo "      Enterprise teams can now be assigned to cost centers natively, which keeps membership"
+    echo "      current automatically. Assign team '$team_slug' to cost center '$cost_center' under"
+    echo "      Enterprise → Settings → Billing → Cost centers."
+    echo "      To run the legacy user-level sync instead, set force_user_sync: true on the mapping"
+    echo "      (or pass --force-user-sync true)."
+    continue
+  fi
+
   team_file="$(mktemp)"
   cc_file="$(mktemp)"
 
@@ -298,6 +374,40 @@ for ((i = 0; i < mapping_count; i++)); do
     rm -f "$team_file" "$cc_file"
     failures=$((failures + 1))
     continue
+  fi
+
+  # Defer to native enterprise-team assignment when present (GA 2026-06-25). If
+  # this mapping's team is already assigned to the cost center as a native team
+  # resource, GitHub keeps that membership current automatically, so user-level
+  # sync would redundantly (and conflictingly) re-add the same members as direct
+  # user resources. Skip the mapping in that case; warn on any other team resource
+  # so operators don't unknowingly double-manage one cost center.
+  mapfile -t cc_teams < <(fetch_cost_center_teams "$cc_id")
+  if ((${#cc_teams[@]})); then
+    team_slug_lc="$(printf '%s' "$team_slug" | tr '[:upper:]' '[:lower:]')"
+    team_slug_norm="$(slugify "$team_slug")"
+    team_natively_assigned=false
+    for cc_team in "${cc_teams[@]}"; do
+      cc_team_lc="$(printf '%s' "$cc_team" | tr '[:upper:]' '[:lower:]')"
+      if [[ "$cc_team_lc" == "$team_slug_lc" || "$(slugify "$cc_team")" == "$team_slug_norm" ]]; then
+        team_natively_assigned=true
+        break
+      fi
+    done
+
+    if [[ "$team_natively_assigned" == "true" ]]; then
+      echo "NOTE: Cost center '$cost_center' already has enterprise team '$team_slug' assigned natively."
+      echo "      GitHub keeps that membership current automatically (incl. SCIM/IdP sync), so user-level"
+      echo "      sync is redundant. Skipping mapping '$name' to avoid double-managing the same members."
+      echo "      To run user-level sync anyway, remove the native team assignment from the cost center."
+      rm -f "$team_file" "$cc_file"
+      continue
+    fi
+
+    echo "WARN: Cost center '$cost_center' has natively-assigned team resource(s): ${cc_teams[*]}."
+    echo "      Their members are attributed dynamically and are not listed as user resources, so they"
+    echo "      are excluded from the diff below. Avoid mixing native team assignment with user-level sync"
+    echo "      on the same cost center."
   fi
 
   mapfile -t to_add < <(comm -23 "$team_file" "$cc_file")
