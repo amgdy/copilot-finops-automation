@@ -10,6 +10,15 @@ Govern GitHub Copilot spend as code. Apply AI-credit budgets for your GitHub Ent
 - 🔒 **Secrets stay out of config** — the enterprise slug is an action input (a repo/org Variable), never a tracked config field.
 - 🔌 **Reusable v3 action** — load `amgdy/copilot-finops-automation@v3` from any enterprise config repo. No need to fork this whole repo just to run the engine.
 - ⚙️ **Zero install** — a self-contained Node.js action (`node24`, committed `dist/`). No `gh`/`jq`/`yq`/`pipx` on the runner.
+- 🖥️ **Config Studio** — a browser-only visual editor, hosted on GitHub Pages, for building, reviewing, and downloading valid v3 configuration.
+
+## 🪄 Config Studio
+
+Use the **Config Studio** GitHub Pages site to start from an empty v3 configuration or open an existing YAML file. It provides guided policy forms, local validation, a policy hierarchy, and a downloadable `copilot-finops.yml`. The editor runs entirely in the browser: it does not require a token or enterprise slug, and it does not upload config data.
+
+Enable **Settings → Pages → GitHub Actions** once for this repository. Subsequent updates to `site/` on `main` deploy automatically through [Deploy Config Studio](.github/workflows/deploy-pages.yml).
+
+The Studio is an authoring aid, not an apply surface. Keep downloaded configurations under review, then run `node bin/copilot-finops.js validate config/copilot-finops.yml` (or the repository validation workflow) before a dry-run apply.
 
 ## ⚙️ How it works
 

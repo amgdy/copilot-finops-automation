@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Create and validate Copilot FinOps AI-credit budget configuration." />
+    <title>Copilot FinOps Config Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Copilot FinOps Config Studio home">
+        <span class="brand-mark">CF</span>
+        <span>Config Studio</span>
+      </a>
+      <div class="header-actions">
+        <button id="new-config" class="button button-quiet">New config</button>
+        <label class="button button-quiet" for="config-file">Open YAML<input id="config-file" type="file" accept=".yml,.yaml,text/yaml" hidden /></label>
+        <button id="download-config" class="button button-primary">Download YAML</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">COPILOT AI-CREDIT GOVERNANCE</p>
+        <h1>Make budget policy<br /><em>clear before it runs.</em></h1>
+        <p class="hero-copy">Build a valid v3 configuration locally, see the policy hierarchy at a glance, and download the YAML for review. Nothing you enter leaves this browser.</p>
+        <div class="privacy-note"><span aria-hidden="true">✓</span> Private by design — no token, enterprise slug, or network request is needed.</div>
+      </section>
+
+      <section class="workspace" aria-label="Configuration workspace">
+        <aside class="sidebar">
+          <div class="sidebar-heading">
+            <div>
+              <p class="eyebrow">POLICIES</p>
+              <h2 id="policy-count">0 policies</h2>
+            </div>
+            <button id="add-policy" class="icon-button" aria-label="Add policy">+</button>
+          </div>
+          <div id="policy-list" class="policy-list"></div>
+          <button id="add-policy-empty" class="add-policy-card">+ Add a policy</button>
+        </aside>
+
+        <section class="editor-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">CONFIGURATION</p>
+              <h2 id="editor-title">Start a policy</h2>
+            </div>
+            <button id="remove-policy" class="button button-danger" hidden>Remove</button>
+          </div>
+          <div id="empty-editor" class="empty-state">
+            <div class="empty-icon">✦</div>
+            <h3>Create your first policy</h3>
+            <p>Choose a scope and we'll show only the settings that apply to it.</p>
+            <button class="button button-primary add-policy-trigger">Add policy</button>
+          </div>
+          <form id="policy-form" hidden novalidate>
+            <div class="scope-picker">
+              <label for="scope">Budget scope</label>
+              <select id="scope" name="scope">
+                <option value="all_users">All users</option>
+                <option value="user">Specific users</option>
+                <option value="cost_center">Cost center</option>
+                <option value="team">Enterprise team</option>
+                <option value="organization">Organization</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+              <p id="scope-help" class="field-help"></p>
+            </div>
+
+            <div class="form-grid">
+              <label>Policy label <span>optional</span>
+                <input id="name" name="name" placeholder="e.g. engineering cap" autocomplete="off" />
+              </label>
+              <label>AI-credit cap (USD)
+                <input id="amount" name="amount" type="number" min="0" step="1" inputmode="numeric" placeholder="0" required />
+              </label>
+            </div>
+
+            <label class="wide-field">Description <span>optional</span>
+              <input id="description" name="description" placeholder="What does this policy protect?" autocomplete="off" />
+            </label>
+
+            <div id="identity-fields"></div>
+
+            <div id="collective-options" class="options-card" hidden>
+              <div class="option-row">
+                <div>
+                  <strong>Collective metered cap</strong>
+                  <p>Cap the group's metered AI-credit spend after the shared pool, instead of setting individual caps.</p>
+                </div>
+                <label class="switch"><input id="metered_credits_only" type="checkbox" /><span></span></label>
+              </div>
+              <div id="enforce-row" class="option-row" hidden>
+                <div>
+                  <strong>Hard stop at the cap</strong>
+                  <p>Turn off for alert-only monitoring.</p>
+                </div>
+                <label class="switch"><input id="enforce" type="checkbox" checked /><span></span></label>
+              </div>
+              <div id="shared-cost-center-row" class="option-row" hidden>
+                <div>
+                  <strong>Allow a shared cost center</strong>
+                  <p>Use only when this team's cost center intentionally includes other resources.</p>
+                </div>
+                <label class="switch"><input id="allow_shared_cost_center" type="checkbox" /><span></span></label>
+              </div>
+            </div>
+
+            <label class="wide-field">Alert recipients <span>optional · comma separated GitHub logins</span>
+              <input id="alerts" name="alerts" placeholder="e.g. billing-admin, finops-lead" autocomplete="off" />
+            </label>
+          </form>
+        </section>
+
+        <aside class="insights-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">LIVE CHECK</p>
+              <h2>Configuration health</h2>
+            </div>
+            <span id="health-badge" class="health-badge">Ready</span>
+          </div>
+          <div id="validation-results" class="validation-results">
+            <p class="muted">Add a policy to check it against the v3 configuration rules.</p>
+          </div>
+          <div class="insight-divider"></div>
+          <p class="eyebrow">AT A GLANCE</p>
+          <div id="summary-stats" class="summary-stats"></div>
+        </aside>
+      </section>
+
+      <section class="map-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">POLICY MAP</p>
+            <h2>Coverage hierarchy</h2>
+          </div>
+          <p>Your budgets are shown by the scope they govern. Individual overrides sit closest to people; collective caps guard groups and the enterprise.</p>
+        </div>
+        <div id="policy-map" class="policy-map"></div>
+      </section>
+
+      <section class="yaml-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">YAML PREVIEW</p>
+            <h2>Ready for review</h2>
+          </div>
+          <button id="copy-yaml" class="button button-quiet">Copy YAML</button>
+        </div>
+        <pre id="yaml-preview" aria-label="Generated YAML configuration"></pre>
+      </section>
+    </main>
+    <footer>Copilot FinOps Config Studio · v3 config editor · Validate downloaded files with the repository CLI before applying.</footer>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
