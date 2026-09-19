@@ -1,3 +1,7 @@
+import { parseConfigYaml, serializeConfigYaml, validateStudioConfig } from "./config.js";
+import { createCoverageTracker, renderCoverageHouse } from "./coverage.js";
+import { createIcons, ArrowUpRight, BellRing, Building2, CircleAlert, Copy, FileCode2, House, Info, Layers3, Link2, Monitor, ShieldCheck, UserRound, UsersRound, Vault } from "lucide";
+
 const scopeMeta = {
   all_users: ["All users", "A hard-stop per-user cap for every licensed user."],
   user: ["Specific users", "A hard-stop per-user cap for one or more GitHub logins."],
@@ -6,65 +10,75 @@ const scopeMeta = {
   organization: ["Organization", "A direct collective metered cap for one organization."],
   enterprise: ["Enterprise", "One collective metered cap across the enterprise."],
 };
-const groupedScopes = [
-  ["Individual coverage", ["all_users", "user"]],
-  ["Group coverage", ["cost_center", "team", "organization"]],
-  ["Enterprise coverage", ["enterprise"]],
-];
 let config = { version: 3, budgets: [] };
 let selected = -1;
 
 const $ = (id) => document.getElementById(id);
 const form = $("policy-form");
+const trackCoverage = createCoverageTracker();
+const pendingCoverageMotion = new WeakMap();
+let coverageObserver;
+
+function policies() {
+  return Array.isArray(config?.budgets) ? config.budgets : [];
+}
+
+function editablePolicy(policy) {
+  return policy !== null && typeof policy === "object" && !Array.isArray(policy) && Boolean(scopeMeta[policy.scope]);
+}
 
 function policyLabel(policy, index) {
+  if (policy === null || typeof policy !== "object" || Array.isArray(policy)) return `Policy ${index + 1}`;
   return policy.name || scopeMeta[policy.scope]?.[0] || `Policy ${index + 1}`;
 }
 
-function clone(value) { return JSON.parse(JSON.stringify(value)); }
-
 function addPolicy() {
+  if (!Array.isArray(config.budgets)) config.budgets = [];
   config.budgets.push({ scope: "all_users", amount: 0 });
   selected = config.budgets.length - 1;
   render();
 }
 
 function removePolicy() {
-  config.budgets.splice(selected, 1);
-  selected = Math.min(selected, config.budgets.length - 1);
+  policies().splice(selected, 1);
+  selected = Math.min(selected, policies().length - 1);
   render();
 }
 
-function currentPolicy() { return config.budgets[selected]; }
+function currentPolicy() { return policies()[selected]; }
 
 function render() {
   renderList();
   renderEditor();
   renderInsights();
   renderMap();
-  $("yaml-preview").textContent = toYaml(config);
+  $("yaml-preview").textContent = serializeConfigYaml(config);
 }
 
 function renderList() {
-  $("policy-count").textContent = `${config.budgets.length} ${config.budgets.length === 1 ? "policy" : "policies"}`;
-  $("policy-list").innerHTML = config.budgets.map((p, index) => `
+  const items = policies();
+  $("policy-count").textContent = `${items.length} ${items.length === 1 ? "policy" : "policies"}`;
+  $("policy-list").innerHTML = items.map((p, index) => `
     <button class="policy-item ${index === selected ? "active" : ""}" data-index="${index}">
-      <strong>${escapeHtml(policyLabel(p, index))}</strong><span>${escapeHtml(scopeMeta[p.scope]?.[0] || "Unknown scope")} · $${Number.isInteger(p.amount) ? p.amount : "—"}</span>
+      <strong>${escapeHtml(policyLabel(p, index))}</strong><span>${escapeHtml(scopeMeta[p?.scope]?.[0] || "Invalid policy")} · $${Number.isInteger(p?.amount) ? p.amount : "—"}</span>
     </button>`).join("");
   document.querySelectorAll(".policy-item").forEach((button) => button.addEventListener("click", () => {
     selected = Number(button.dataset.index); render();
   }));
-  $("add-policy-empty").hidden = config.budgets.length > 0;
+  $("add-policy-empty").hidden = items.length > 0;
 }
 
 function renderEditor() {
   const policy = currentPolicy();
-  const hasPolicy = Boolean(policy);
-  form.hidden = !hasPolicy;
+  const hasPolicy = policy !== undefined;
+  const canEdit = editablePolicy(policy);
+  form.hidden = !canEdit;
   $("empty-editor").hidden = hasPolicy;
+  $("invalid-editor").hidden = !hasPolicy || canEdit;
   $("remove-policy").hidden = !hasPolicy;
   if (!hasPolicy) { $("editor-title").textContent = "Start a policy"; return; }
   $("editor-title").textContent = policyLabel(policy, selected);
+  if (!canEdit) return;
   $("scope").value = policy.scope;
   $("scope-help").textContent = scopeMeta[policy.scope][1];
   ["name", "description"].forEach((key) => { $(key).value = policy[key] ?? ""; });
@@ -106,7 +120,7 @@ function renderOptions(policy) {
 
 function syncForm(event) {
   let policy = currentPolicy();
-  if (!policy) return;
+  if (!editablePolicy(policy)) return;
   const scope = $("scope").value;
   const scopeChanged = policy.scope !== scope;
   if (scopeChanged) {
@@ -132,127 +146,111 @@ function syncForm(event) {
   renderList();
   renderInsights();
   renderMap();
-  $("yaml-preview").textContent = toYaml(config);
+  $("yaml-preview").textContent = serializeConfigYaml(config);
 }
 
 function renderInsights() {
-  const errors = validate(config);
+  const validation = validateStudioConfig(config);
+  const errors = validation.errors.map((error) => error.path === "(root)" ? error.message : `${error.path}: ${error.message}`);
   const badge = $("health-badge");
   badge.textContent = errors.length ? `${errors.length} issue${errors.length === 1 ? "" : "s"}` : "Valid";
   badge.classList.toggle("error", Boolean(errors.length));
   $("validation-results").innerHTML = errors.length
     ? errors.map((error) => `<div class="validation-item">${escapeHtml(error)}</div>`).join("")
     : `<p class="valid-message">✓ This configuration follows the v3 config rules.</p>`;
-  const collective = config.budgets.filter((p) => p.scope === "enterprise" || p.scope === "organization" || p.metered_credits_only).length;
-  const caps = config.budgets.reduce((total, p) => total + (Number.isInteger(p.amount) ? p.amount : 0), 0);
-  $("summary-stats").innerHTML = `<div class="stat"><strong>${config.budgets.length}</strong><span>policies</span></div><div class="stat"><strong>${collective}</strong><span>collective caps</span></div><div class="stat"><strong>$${caps.toLocaleString()}</strong><span>sum of caps</span></div><div class="stat"><strong>${new Set(config.budgets.map((p) => p.scope)).size}</strong><span>scope types</span></div>`;
+  const items = policies();
+  const validPolicies = items.filter(editablePolicy);
+  const collective = validPolicies.filter((p) => p.scope === "enterprise" || p.scope === "organization" || p.metered_credits_only).length;
+  const caps = validPolicies.reduce((total, p) => total + (Number.isInteger(p.amount) ? p.amount : 0), 0);
+  $("summary-stats").innerHTML = `<div class="stat"><strong>${items.length}</strong><span>policies</span></div><div class="stat"><strong>${collective}</strong><span>collective caps</span></div><div class="stat"><strong>$${caps.toLocaleString()}</strong><span>sum of caps</span></div><div class="stat"><strong>${new Set(validPolicies.map((p) => p.scope)).size}</strong><span>scope types</span></div>`;
 }
 
 function renderMap() {
-  $("policy-map").innerHTML = config.budgets.length ? groupedScopes.map(([title, scopes]) => {
-    const cards = config.budgets.filter((p) => scopes.includes(p.scope)).map((p, index) =>
-      `<div class="map-card"><strong>${escapeHtml(policyLabel(p, index))}</strong><span>${escapeHtml(scopeMeta[p.scope][0])} · $${p.amount ?? "—"}</span></div>`).join("") || `<span class="muted">No policies here yet.</span>`;
-    return `<div class="map-column"><h3>${title}</h3>${cards}</div>`;
-  }).join("") : `<div class="map-placeholder">Your policy hierarchy will appear here as you add budgets.</div>`;
-}
-
-function validate(doc) {
-  const errors = [];
-  if (doc.version !== 3) errors.push("version must be 3.");
-  if (!Array.isArray(doc.budgets)) return ["budgets must be a list."];
-  const seen = { all_users: 0, enterprise: 0, cost: new Set(), org: new Set() };
-  doc.budgets.forEach((p, index) => {
-    const prefix = `Policy ${index + 1}`;
-    if (!scopeMeta[p.scope]) errors.push(`${prefix}: choose a valid scope.`);
-    if (!Number.isInteger(p.amount) || p.amount < 0) errors.push(`${prefix}: amount must be a whole USD value of 0 or more.`);
-    if (p.scope === "user" && !p.users?.length) errors.push(`${prefix}: add at least one user login.`);
-    if (p.scope === "cost_center" && !p.cost_center) errors.push(`${prefix}: enter an existing cost center.`);
-    if (p.scope === "team" && !p.team) errors.push(`${prefix}: enter an enterprise team.`);
-    if (p.scope === "organization" && !p.organization) errors.push(`${prefix}: enter an organization.`);
-    if (p.scope === "all_users" && ++seen.all_users > 1) errors.push(`${prefix}: only one all-users policy is allowed.`);
-    if (p.scope === "enterprise" && ++seen.enterprise > 1) errors.push(`${prefix}: only one enterprise policy is allowed.`);
-    if (p.scope === "cost_center") {
-      const key = `${p.cost_center}|${p.metered_credits_only === true}`;
-      if (seen.cost.has(key)) errors.push(`${prefix}: this cost center already has a policy with the same cap type.`);
-      seen.cost.add(key);
-    }
-    if (p.scope === "organization") {
-      if (seen.org.has(p.organization)) errors.push(`${prefix}: this organization already has a policy.`);
-      seen.org.add(p.organization);
-    }
-  });
-  return errors;
-}
-
-function toYaml(doc) {
-  const lines = ["version: 3"];
-  if (!doc.budgets.length) return `${lines.join("\n")}\n`;
-  lines.push("", "budgets:");
-  doc.budgets.forEach((policy) => {
-    const ordered = ["name", "description", "scope", "users", "cost_center", "team", "organization", "metered_credits_only", "amount", "enforce", "alerts", "allow_shared_cost_center"];
-    ordered.filter((key) => policy[key] !== undefined && policy[key] !== "" && !(Array.isArray(policy[key]) && !policy[key].length)).forEach((key, i) => {
-      lines.push(`  ${i ? " " : "- "}${key}: ${formatValue(policy[key])}`);
+  const map = $("policy-map");
+  const items = [...policies()];
+  const { changed, changes } = trackCoverage(items);
+  if (!changed) {
+    map.querySelectorAll(".coverage-policy").forEach((button) => {
+      button.setAttribute("aria-pressed", String(Number(button.dataset.policyIndex) === selected));
     });
+    return;
+  }
+  coverageObserver?.disconnect();
+  map.innerHTML = renderCoverageHouse(items, selected);
+  createIcons({
+    icons: { ArrowUpRight, BellRing, Building2, CircleAlert, Copy, FileCode2, House, Info, Layers3, Link2, Monitor, ShieldCheck, UserRound, UsersRound, Vault },
+    attrs: { "aria-hidden": "true", focusable: "false" },
   });
-  return `${lines.join("\n")}\n`;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) {
+    items.forEach((policy) => { if (policy && typeof policy === "object") pendingCoverageMotion.delete(policy); });
+    return;
+  }
+  changes.forEach((change, index) => {
+    const policy = items[index];
+    if (policy && typeof policy === "object" && pendingCoverageMotion.get(policy) !== "added") {
+      pendingCoverageMotion.set(policy, change);
+    }
+  });
+  const observer = new IntersectionObserver((entries) => {
+    let order = 0;
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting || !entry.target.isConnected) return;
+      const policy = items[Number(entry.target.dataset.policyIndex)];
+      const motion = pendingCoverageMotion.get(policy);
+      if (motion) {
+        entry.target.style.setProperty("--coverage-delay", `${motion === "added" ? Math.min(order++, 5) * 45 : 0}ms`);
+        entry.target.classList.add(`coverage-${motion}`);
+        pendingCoverageMotion.delete(policy);
+      }
+      observer.unobserve(entry.target);
+    });
+  }, { threshold: 0.15 });
+  coverageObserver = observer;
+  map.querySelectorAll(".coverage-policy").forEach((button) => {
+    if (pendingCoverageMotion.has(items[Number(button.dataset.policyIndex)])) observer.observe(button);
+  });
 }
 
-function formatValue(value) {
-  if (Array.isArray(value)) return `[${value.map(formatValue).join(", ")}]`;
-  if (typeof value === "string") return /^[A-Za-z0-9_.-]+$/.test(value) ? value : JSON.stringify(value);
-  return String(value);
-}
 function commaList(value) { return value.split(",").map((item) => item.trim()).filter(Boolean); }
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" })[c]); }
 function escapeAttr(value) { return escapeHtml(value); }
-
-// This intentionally supports the compact v3 YAML emitted by this editor, including
-// comments, quoted strings, and inline arrays. Imported content is validated before use.
-function parseYaml(text) {
-  const doc = { budgets: [] }; let current;
-  text.split(/\r?\n/).forEach((original, lineNumber) => {
-    const line = original.replace(/\s+#.*$/, "").trimEnd();
-    if (!line.trim()) return;
-    if (/^version:\s*/.test(line)) { doc.version = scalar(line.split(/:\s*/, 2)[1]); return; }
-    if (/^budgets:\s*$/.test(line)) return;
-    const match = line.match(/^\s*(?:-\s+)?([A-Za-z_]+):\s*(.*)$/);
-    if (!match) throw new Error(`Line ${lineNumber + 1} is not a supported v3 YAML field.`);
-    const isStart = /^\s*-\s+/.test(line);
-    if (isStart) { current = {}; doc.budgets.push(current); }
-    if (!current) throw new Error(`Line ${lineNumber + 1} must appear under budgets.`);
-    current[match[1]] = scalar(match[2]);
-  });
-  if (doc.version === undefined) throw new Error("The YAML must include version: 3.");
-  return doc;
-}
-function scalar(value) {
-  const v = value.trim();
-  if (v === "true") return true; if (v === "false") return false;
-  if (/^-?\d+$/.test(v)) return Number(v);
-  if (v.startsWith("[") && v.endsWith("]")) return v.slice(1, -1).split(",").map((item) => scalar(item)).filter((item) => item !== "");
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1);
-  return v;
-}
 
 document.querySelectorAll(".add-policy-trigger").forEach((button) => button.addEventListener("click", addPolicy));
 $("add-policy").addEventListener("click", addPolicy);
 $("add-policy-empty").addEventListener("click", addPolicy);
 $("remove-policy").addEventListener("click", removePolicy);
+$("policy-map").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-policy-index]");
+  if (!button) return;
+  selected = Number(button.dataset.policyIndex);
+  render();
+  $("editor-title").focus({ preventScroll: true });
+  $("editor-title").scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+});
 form.addEventListener("input", syncForm);
 form.addEventListener("change", syncForm);
 $("new-config").addEventListener("click", () => { config = { version: 3, budgets: [] }; selected = -1; render(); });
 $("copy-yaml").addEventListener("click", async () => {
-  await navigator.clipboard.writeText(toYaml(config)); $("copy-yaml").textContent = "Copied!";
+  await navigator.clipboard.writeText(serializeConfigYaml(config)); $("copy-yaml").textContent = "Copied!";
   setTimeout(() => { $("copy-yaml").textContent = "Copy YAML"; }, 1500);
 });
+$("copy-action").addEventListener("click", async () => {
+  $("action-copy-status").textContent = "";
+  try {
+    await navigator.clipboard.writeText($("action-example").textContent);
+    $("action-copy-status").textContent = "Workflow copied.";
+  } catch {
+    $("action-copy-status").textContent = "Could not copy the workflow. Clipboard access is unavailable.";
+  }
+});
 $("download-config").addEventListener("click", () => {
-  const url = URL.createObjectURL(new Blob([toYaml(config)], { type: "text/yaml" }));
+  const url = URL.createObjectURL(new Blob([serializeConfigYaml(config)], { type: "text/yaml" }));
   const link = Object.assign(document.createElement("a"), { href: url, download: "copilot-finops.yml" });
   link.click(); URL.revokeObjectURL(url);
 });
 $("config-file").addEventListener("change", async (event) => {
   const file = event.target.files[0]; if (!file) return;
-  try { config = parseYaml(await file.text()); selected = config.budgets.length ? 0 : -1; render(); }
+  try { config = parseConfigYaml(await file.text(), file.name); selected = policies().length ? 0 : -1; render(); }
   catch (error) { window.alert(`Could not open this YAML file: ${error.message}`); }
   event.target.value = "";
 });

@@ -30,6 +30,15 @@ jobs:
             git --no-pager diff --stat -- dist
             exit 1
           fi
+      - name: Rebuild Config Studio
+        run: npm run build:site
+      - name: Ensure committed Config Studio bundle is up to date
+        run: |
+          if ! git diff --quiet -- site/app.bundle.js; then
+            echo "::error::site/app.bundle.js is out of date. Run 'npm run build:site' and commit the result."
+            git --no-pager diff --stat -- site/app.bundle.js
+            exit 1
+          fi
       - name: Regenerate schema docs
         run: npm run docs:schema
       - name: Ensure docs/config-schema.md is up to date

@@ -30,12 +30,13 @@ When you change a config field, constraint, enum, default, scope rule, or the sc
 
    ```bash
    npm run build         # refresh dist/
+   npm run build:site    # refresh site/app.bundle.js
    npm run docs:schema   # refresh docs/config-schema.md
    ```
 
 5. Keep `npm test` green.
 
-CI (`.github/workflows/ci.yml`) runs `npm test` and fails if the committed `dist/` or `docs/config-schema.md` is stale, so rebuild and regenerate before pushing.
+CI (`.github/workflows/ci.yml`) runs `npm test` and fails if the committed `dist/`, `site/app.bundle.js`, or `docs/config-schema.md` is stale, so rebuild and regenerate before pushing.
 
 If available, also lint the workflows:
 

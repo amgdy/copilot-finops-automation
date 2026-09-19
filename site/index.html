@@ -6,11 +6,23 @@
     <meta name="description" content="Create and validate Copilot FinOps AI-credit budget configuration." />
     <title>Copilot FinOps Config Studio</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./coverage.css" />
   </head>
   <body>
     <header class="topbar">
       <a class="brand" href="./" aria-label="Copilot FinOps Config Studio home">
-        <span class="brand-mark">CF</span>
+        <span class="brand-mark" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32" fill="none" focusable="false">
+            <title>Config Studio: enterprise budget controls</title>
+            <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 14.5 14.7 5.6a2 2 0 0 1 2.6 0L28 14.5" />
+              <path d="M7.5 12v13.5a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V12" />
+              <path d="M11 16.5h10M11 22h10" />
+            </g>
+            <circle cx="14" cy="16.5" r="2.4" fill="currentColor" />
+            <circle cx="19" cy="22" r="2.4" fill="var(--coral)" />
+          </svg>
+        </span>
         <span>Config Studio</span>
       </a>
       <div class="header-actions">
@@ -45,7 +57,7 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">CONFIGURATION</p>
-              <h2 id="editor-title">Start a policy</h2>
+              <h2 id="editor-title" tabindex="-1">Start a policy</h2>
             </div>
             <button id="remove-policy" class="button button-danger" hidden>Remove</button>
           </div>
@@ -54,6 +66,10 @@
             <h3>Create your first policy</h3>
             <p>Choose a scope and we'll show only the settings that apply to it.</p>
             <button class="button button-primary add-policy-trigger">Add policy</button>
+          </div>
+          <div id="invalid-editor" class="empty-state" hidden>
+            <h3>This policy cannot be edited</h3>
+            <p>Review its required fields in Configuration health, then remove it or correct the source YAML and reopen the file.</p>
           </div>
           <form id="policy-form" hidden novalidate>
             <div class="scope-picker">
@@ -131,13 +147,13 @@
         </aside>
       </section>
 
-      <section class="map-section">
+      <section class="map-section" aria-labelledby="coverage-title">
         <div class="section-heading">
           <div>
             <p class="eyebrow">POLICY MAP</p>
-            <h2>Coverage hierarchy</h2>
+            <h2 id="coverage-title">Budget Blueprint</h2>
           </div>
-          <p>Your budgets are shown by the scope they govern. Individual overrides sit closest to people; collective caps guard groups and the enterprise.</p>
+          <span class="coverage-section-label">Your enterprise, under one roof</span>
         </div>
         <div id="policy-map" class="policy-map"></div>
       </section>
@@ -150,10 +166,60 @@
           </div>
           <button id="copy-yaml" class="button button-quiet">Copy YAML</button>
         </div>
-        <pre id="yaml-preview" aria-label="Generated YAML configuration"></pre>
+        <div class="code-preview" role="group" aria-labelledby="config-preview-path">
+          <div class="code-preview-header">
+            <i data-lucide="file-code-2" aria-hidden="true"></i>
+            <code id="config-preview-path" class="code-preview-path">config/copilot-finops.yml</code>
+            <span class="code-preview-language">YAML</span>
+          </div>
+          <pre id="yaml-preview" aria-label="Generated YAML configuration"></pre>
+        </div>
+      </section>
+
+      <section class="yaml-section" aria-labelledby="action-example-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">GITHUB ACTIONS</p>
+            <h2 id="action-example-title">Preview your budgets</h2>
+          </div>
+          <button id="copy-action" class="button button-quiet" type="button" aria-label="Copy workflow" title="Copy workflow">
+            <i data-lucide="copy" width="18" height="18" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="code-preview" role="group" aria-labelledby="workflow-preview-path">
+          <div class="code-preview-header">
+            <i data-lucide="file-code-2" aria-hidden="true"></i>
+            <code id="workflow-preview-path" class="code-preview-path">.github/workflows/copilot-finops.yml</code>
+            <span class="code-preview-language">YAML</span>
+          </div>
+          <pre aria-label="GitHub Actions dry-run workflow"><code id="action-example">name: Copilot FinOps preview
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Preview AI-credit budgets
+        uses: amgdy/copilot-finops-automation@v3
+        with:
+          operation: apply
+          config-file: config/copilot-finops.yml
+          enterprise: ${{ vars.COPILOT_FINOPS_ENTERPRISE }}
+          token: ${{ secrets.COPILOT_FINOPS_TOKEN }}
+          dry-run: "true"
+          log-level: info
+</code></pre>
+          </div>
+        <p id="action-copy-status" class="field-help" role="status"></p>
       </section>
     </main>
     <footer>Copilot FinOps Config Studio · v3 config editor · Validate downloaded files with the repository CLI before applying.</footer>
-    <script type="module" src="./app.js"></script>
+    <script src="./app.bundle.js" defer></script>
   </body>
 </html>

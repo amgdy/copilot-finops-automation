@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build": "ncc build src/index.js -o dist --license licenses.txt",
+    "build:site": "esbuild site/app.js --bundle --platform=browser --format=iife --target=es2022 --minify --outfile=site/app.bundle.js",
     "test": "node --test",
     "validate": "node bin/copilot-finops.js validate",
     "apply": "node bin/copilot-finops.js apply",
@@ -25,9 +26,11 @@
     "@actions/github": "^9.1.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "js-yaml": "^5.2.1"
+    "js-yaml": "^5.2.1",
+    "lucide": "^1.45.0"
   },
   "devDependencies": {
-    "@vercel/ncc": "^0.44.1"
+    "@vercel/ncc": "^0.44.1",
+    "esbuild": "^0.28.2"
   }
 }

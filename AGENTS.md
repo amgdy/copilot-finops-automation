@@ -17,6 +17,7 @@ A Node.js action (`action.yml` + committed `dist/index.js`, `runs.using: node24`
 
 - Deps: `@actions/core`, `@actions/github` (Octokit), `js-yaml`, `ajv` + `ajv-formats`; bundler `@vercel/ncc` (dev only).
 - Structure: `src/config/{load,validate}.js`, `src/apply-engine.js`, `src/github/{client,costcenters}.js`, `src/report.js`, `src/config-path.js`, `src/operations.js`, `src/migrate.js`, `src/index.js`; CLI `bin/copilot-finops.js`; schema-docs generator `bin/gen-schema-docs.js`.
+- Config Studio: browser source under `site/`; `npm run build:site` bundles `js-yaml`, the v3 schema, and the shared config validator into committed `site/app.bundle.js` for GitHub Pages.
 - Schema: `schemas/v3/copilot-finops.schema.json` (JSON Schema draft 2020-12). Generated field reference: `docs/config-schema.md` (via `npm run docs:schema`).
 - Tests: `tests/*.test.js` (`node:test`), config contract cases in `tests/cases/v3/copilot-finops.yml`, fake client in `tests/helpers/`.
 
@@ -64,9 +65,10 @@ A JSON Schema describes one document's shape but cannot read live GitHub state, 
 
 - `.github/workflows/finops-validate.yml` runs `validate` on PRs touching config/schema/action (token-free).
 - `.github/workflows/finops-apply.yml` runs `apply`: manual dispatch (dry-run by default) + weekly schedule (live). The enterprise slug comes from the `COPILOT_FINOPS_ENTERPRISE` variable and the token from the `COPILOT_FINOPS_TOKEN` secret — neither is a config field. The workflow exposes `log_level` and maps it to the action's `log-level` input (`info` by default; `debug` adds resolution, matching, payload, request, retry, and pagination diagnostics). The job summary always contains the full report.
-- `.github/workflows/ci.yml` runs `npm test` and fails if the committed `dist/` bundle or `docs/config-schema.md` is stale.
+- `.github/workflows/ci.yml` runs `npm test` and fails if the committed `dist/`, `site/app.bundle.js`, or `docs/config-schema.md` is stale.
 - Keep workflow YAML thin: the logic lives in the action (`src/`), not in shell.
 - After changing anything under `src/`, rebuild the bundle (`npm run build`) and **commit `dist/`**. After changing the schema, regenerate (`npm run docs:schema`) and **commit `docs/config-schema.md`**.
+- After changing the Studio, schema, or config validator, rebuild the browser bundle (`npm run build:site`) and **commit `site/app.bundle.js`**.
 
 ## Requirement Changes Must Update The Skill
 
@@ -96,6 +98,7 @@ Run after changes:
 ```bash
 npm test
 npm run build         # rebuild dist/ — commit it
+npm run build:site    # rebuild the Config Studio browser bundle — commit it
 npm run docs:schema   # regenerate docs/config-schema.md — commit it
 node bin/copilot-finops.js validate config/copilot-finops.yml
 node bin/copilot-finops.js validate config/copilot-finops.example.yml

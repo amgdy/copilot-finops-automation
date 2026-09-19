@@ -163,3 +163,5 @@ npm-debug.log*
 
 # Local action run artifact (written when RUNNER_TEMP is unset).
 copilot-finops-summary.md
+.DS_Store
+.npmrc

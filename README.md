@@ -16,6 +16,14 @@ Govern GitHub Copilot spend as code. Apply AI-credit budgets for your GitHub Ent
 
 Use the **Config Studio** GitHub Pages site to start from an empty v3 configuration or open an existing YAML file. It provides guided policy forms, local validation, a policy hierarchy, and a downloadable `copilot-finops.yml`. The editor runs entirely in the browser: it does not require a token or enterprise slug, and it does not upload config data.
 
+The deployed browser bundle includes `js-yaml`, the v3 JSON Schema, and the same validator used by the CLI. Rebuild and commit it with `npm run build:site` after changing the studio, schema, or config validator.
+
+The coverage diagram uses an enterprise house: an enterprise-wide roof, organization wings, cost-center vaults, team workspaces, personal desks, and an all-user foundation. Select any budget to open it in the editor. Per-user and collective caps remain distinct; only identical explicit targets are grouped, since the config does not define group membership. Overlapping caps are not added together. Icons ship in the browser bundle, with no external asset requests.
+
+Amounts show exact USD values with a separate per-user or collective label. New policies animate into view, and edits briefly emphasize the updated cap; selecting a policy does not replay the animation. Offscreen effects wait until the policy is visible, and the diagram respects reduced-motion preferences.
+
+A copyable GitHub Actions workflow follows the YAML preview. It runs manually with `dry-run: "true"`, reads `config/copilot-finops.yml`, and uses the `COPILOT_FINOPS_ENTERPRISE` variable and `COPILOT_FINOPS_TOKEN` secret. Configure both in the consuming repository; the token needs `admin:enterprise` for apply.
+
 Enable **Settings → Pages → GitHub Actions** once for this repository. Subsequent updates to `site/` on `main` deploy automatically through [Deploy Config Studio](.github/workflows/deploy-pages.yml).
 
 The Studio is an authoring aid, not an apply surface. Keep downloaded configurations under review, then run `node bin/copilot-finops.js validate config/copilot-finops.yml` (or the repository validation workflow) before a dry-run apply.
@@ -138,10 +146,11 @@ node bin/copilot-finops.js apply    config/copilot-finops.yml \
 ```bash
 npm test                 # node:test suite
 npm run build            # bundle src/ -> dist/ with @vercel/ncc (commit dist/)
+npm run build:site       # bundle the static Config Studio (commit site/app.bundle.js)
 npm run docs:schema      # regenerate docs/config-schema.md (commit it)
 ```
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests and fails if the committed `dist/` or `docs/config-schema.md` is stale.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests and fails if the committed `dist/`, `site/app.bundle.js`, or `docs/config-schema.md` is stale.
 
 ## 📚 Documentation
 
